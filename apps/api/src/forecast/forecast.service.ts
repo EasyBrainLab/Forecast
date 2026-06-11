@@ -245,32 +245,47 @@ export class ForecastService {
     return this.prisma.forecastPeriode.findMany({ where, orderBy: [{ periode: 'desc' }, { regionCode: 'asc' }] });
   }
 
-  /** Matrix Land × E1 für eine Region: Budget-Rest, Ist YTD, Forecast-Rest, Abweichung. */
+  /** Matrix Land × Produktgruppe für eine Region: Budget · Ist YTD · Forecast · YEE · Abweichung. */
   async matrix(periode: string, regionCode: string, aktor: RequestUser) {
     await this.assertAgmRead(aktor, regionCode);
-    const { jahr, monate } = this.restMonate(periode);
-    const [budgetCells, latest] = await Promise.all([
+    const { jahr, monat, monate } = this.restMonate(periode);
+    const ksts = await this.prisma.kostenstelle.findMany({ where: { regionCode }, select: { id: true } });
+    const [budgetCells, latest, istGrp, e1s, laender] = await Promise.all([
       this.budgetRestProCell(jahr, regionCode, monate),
       this.latestVersionen(this.prisma, periode, regionCode),
+      this.prisma.istUmsatz.groupBy({ by: ['landId', 'e1Id'], where: { jahr, monat: { lt: monat }, kostenstelleId: { in: ksts.map((k) => k.id) } }, _sum: { wertEur: true } }),
+      this.prisma.produktgruppeE1.findMany({ select: { id: true, nameDe: true } }),
+      this.prisma.land.findMany({ select: { isoCode: true, nameDe: true } }),
     ]);
+    const istMap = new Map(istGrp.map((g) => [`${g.landId}|${g.e1Id}`, Number(g._sum.wertEur ?? 0)]));
+    const e1Name = new Map(e1s.map((e) => [e.id, e.nameDe]));
+    const landName = new Map(laender.map((l) => [l.isoCode, l.nameDe]));
     const schwelle = await this.schwellwert();
+
     const zellen = latest.map((v) => {
       const key = `${v.landId}|${v.e1Id}`;
       const forecastRest = summeEur(v.monatswerteRest as unknown as MonatswerteRest);
       const budgetRest = budgetCells.has(key) ? summeEur(budgetCells.get(key) as MonatswerteRest) : 0;
+      const istYtd = istMap.get(key) ?? 0;
+      const yee = istYtd + forecastRest;
       const abwProzent = budgetRest === 0 ? null : ((forecastRest - budgetRest) / Math.abs(budgetRest)) * 100;
       return {
         landId: v.landId,
+        landName: landName.get(v.landId) ?? v.landId,
         e1Id: v.e1Id,
+        e1Name: e1Name.get(v.e1Id) ?? v.e1Id,
         status: v.status,
         budgetRest,
+        istYtd,
         forecastRest,
+        yee,
         abweichungEur: forecastRest - budgetRest,
         abweichungProzent: abwProzent,
         ampel: abwProzent === null ? 'grau' : Math.abs(abwProzent) > schwelle ? 'rot' : 'gruen',
         monatswerteRest: v.monatswerteRest,
       };
     });
+    zellen.sort((a, b) => a.e1Name.localeCompare(b.e1Name) || a.landName.localeCompare(b.landName));
     const periodeInfo = await this.ladePeriode(periode, regionCode);
     return { periode, regionCode, status: periodeInfo.status, deadline: periodeInfo.deadline, schwellwertProzent: schwelle, zellen };
   }

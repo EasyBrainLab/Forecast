@@ -6,17 +6,20 @@ import { Card } from '@/components/ui';
 const KACHELN: Record<string, { href: string; titel: string; text: string }[]> = {
   AGM: [{ href: '/forecast', titel: 'Mein Forecast', text: 'Monatlichen Forecast bestätigen oder anpassen.' }],
   VERTRIEBSLEITER: [
+    { href: '/forecast', titel: 'Forecast / Erfassung', text: 'Gegenüberstellung Budget/Ist/Forecast je Produktgruppe.' },
     { href: '/status-board', titel: 'Status-Board', text: 'Bestätigungsstatus aller Regionen.' },
     { href: '/konsolidierung', titel: 'Konsolidierung', text: 'Ist / YEE / Budget je Region.' },
   ],
   BU_LEITER: [
     { href: '/konsolidierung', titel: 'Konsolidierung', text: 'BU-Gesamtsicht & Abweichungen.' },
+    { href: '/forecast', titel: 'Forecast / Erfassung', text: 'Gegenüberstellung je Land × Produktgruppe.' },
     { href: '/import', titel: 'Import', text: 'Ist- und Budget-Daten einspielen.' },
     { href: '/status-board', titel: 'Status-Board', text: 'Forecast-Status je Region.' },
   ],
   ADMIN: [
+    { href: '/import', titel: 'Import', text: 'Ist- (CSV) und Budget-Daten (Excel) einspielen.' },
+    { href: '/forecast', titel: 'Forecast / Erfassung', text: 'Gegenüberstellung je Produktgruppe.' },
     { href: '/admin/users', titel: 'Nutzerverwaltung', text: 'Einladungen & Rollen.' },
-    { href: '/import', titel: 'Import', text: 'Datenimport & Monitoring.' },
     { href: '/konsolidierung', titel: 'Konsolidierung', text: 'Gesamtsicht.' },
   ],
   SUPPORT: [{ href: '/status-board', titel: 'Status-Board', text: 'Monitoring (lesend).' }],
