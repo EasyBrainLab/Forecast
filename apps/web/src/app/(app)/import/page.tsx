@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { getToken } from '@/lib/api';
-import { Button, Card } from '@/components/ui';
+import { Card } from '@/components/ui';
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 
@@ -33,7 +33,8 @@ export default function ImportPage() {
     setBusy(typ);
     try {
       const r = await upload(pfad, file);
-      typ === 'ist' ? setIst(r) : setBudget(r);
+      if (typ === 'ist') setIst(r);
+      else setBudget(r);
     } catch (e) {
       setErr((e as Error).message);
     } finally {

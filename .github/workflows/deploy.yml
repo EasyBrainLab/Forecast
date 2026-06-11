@@ -97,5 +97,8 @@ jobs:
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
             sleep 10
+            # Stammdaten + Initial-Admin (idempotent; legt Admin aus .env an, falls noch nicht vorhanden)
+            docker compose -f docker-compose.prod.yml run --rm api pnpm seed
             docker compose -f docker-compose.prod.yml ps
+            curl -fsS http://localhost:4000/api/health || true
             docker system prune -f
