@@ -42,6 +42,12 @@ export default function ForecastPage() {
   const [kommentar, setKommentar] = useState('');
 
   const { data: perioden } = useQuery({ queryKey: ['meine'], queryFn: () => api.get<Periode[]>('/forecast/meine') });
+  const [neuePeriode, setNeuePeriode] = useState('2026-06');
+  const oeffnen = useMutation({
+    mutationFn: () => api.post('/forecast/oeffnen', { periode: neuePeriode }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['meine'] }),
+  });
+  const kannOeffnen = user?.rolle === 'ADMIN' || user?.rolle === 'BU_LEITER';
   const aktiv = sel ?? (perioden && perioden[0] ? { periode: perioden[0].periode, regionCode: perioden[0].regionCode } : null);
   const { data: matrix } = useQuery({
     queryKey: ['matrix', aktiv?.periode, aktiv?.regionCode],
@@ -96,9 +102,25 @@ export default function ForecastPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold text-ez-primary">Forecast — Gegenüberstellung &amp; Erfassung</h1>
+
+      {kannOeffnen && (
+        <Card className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="mb-1 block text-sm font-medium">Forecast-Periode öffnen (alle Regionen)</label>
+            <input type="month" className="rounded border border-gray-300 px-3 py-2 text-sm" value={neuePeriode} onChange={(e) => setNeuePeriode(e.target.value)} />
+          </div>
+          <Button onClick={() => oeffnen.mutate()} disabled={oeffnen.isPending}>
+            {oeffnen.isPending ? 'Öffne…' : 'Periode öffnen'}
+          </Button>
+          {oeffnen.isSuccess && <span className="text-sm text-ez-ampelGruen">Geöffnet ✓</span>}
+          {oeffnen.isError && <span className="text-sm text-ez-accent">{(oeffnen.error as Error).message}</span>}
+          <p className="w-full text-xs text-gray-400">Voraussetzung: Budget &amp; Ist für das Jahr sind importiert (Menü „Import"). Die Restmonate werden aus dem Budget vorbelegt.</p>
+        </Card>
+      )}
+
       {perioden && perioden.length === 0 && (
         <Card>
-          <p className="text-gray-600">Es ist noch keine Forecast-Periode geöffnet. Eine Periode wird vom BU-Leiter/Admin nach dem Ist-Import geöffnet.</p>
+          <p className="text-gray-600">Es ist noch keine Forecast-Periode geöffnet. {kannOeffnen ? 'Öffne oben eine Periode.' : 'Eine Periode wird vom BU-Leiter/Admin nach dem Ist-Import geöffnet.'}</p>
         </Card>
       )}
 
