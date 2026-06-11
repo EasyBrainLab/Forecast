@@ -39,6 +39,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build shared
         run: pnpm --filter @forecast/shared build
+      - name: Prisma generate (vor Typecheck — Client-Typen nötig)
+        run: pnpm --filter @forecast/api exec prisma generate
       - name: Lint
         run: pnpm lint
       - name: Typecheck
@@ -47,7 +49,7 @@ jobs:
         run: node scripts/ci-guards.mjs
       - name: Unit-Tests (Domain 100%)
         run: pnpm --filter @forecast/shared test:cov
-      - name: Prisma migrate + generate
-        run: pnpm --filter @forecast/api exec prisma migrate deploy && pnpm --filter @forecast/api exec prisma generate
+      - name: Prisma migrate deploy
+        run: pnpm --filter @forecast/api exec prisma migrate deploy
       - name: Build
         run: pnpm -r build

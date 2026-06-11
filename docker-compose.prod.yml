@@ -48,6 +48,10 @@ services:
 
   web:
     image: ghcr.io/${GITHUB_REPOSITORY}/forecast-web:${IMAGE_TAG:-latest}
+    environment:
+      # Next-Standalone bindet sonst auf $HOSTNAME (Docker = Container-ID) -> für Traefik unerreichbar (502).
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
     depends_on:
       - api
     init: true

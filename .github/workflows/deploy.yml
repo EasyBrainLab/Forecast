@@ -100,5 +100,7 @@ jobs:
             # Stammdaten + Initial-Admin (idempotent; legt Admin aus .env an, falls noch nicht vorhanden)
             docker compose -f docker-compose.prod.yml run --rm api pnpm seed
             docker compose -f docker-compose.prod.yml ps
+            sleep 5
             curl -fsS http://localhost:4000/api/health || true
+            docker compose -f docker-compose.prod.yml logs --tail=30 web || true
             docker system prune -f
