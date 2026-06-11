@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: forecast
+          POSTGRES_PASSWORD: forecast
+          POSTGRES_DB: forecast_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U forecast"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://forecast:forecast@localhost:5432/forecast_test?schema=public
+      JWT_SECRET: ci-test-secret-mindestens-32-zeichen-lang-xx
+      ENCRYPTION_KEY: ZGV2LW9ubHktMzJieXRlLWtleS1iYXNlNjQtZXhhbXBsZQ==
+      APP_BASE_URL: http://localhost:3000
+      DOMAIN: localhost
+      SMTP_HOST: localhost
+      SMTP_FROM: 'Forecast <ci@localhost>'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build shared
+        run: pnpm --filter @forecast/shared build
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm -r typecheck
+      - name: CI-Guards (Routen/Whitelist-PATCH)
+        run: node scripts/ci-guards.mjs
+      - name: Unit-Tests (Domain 100%)
+        run: pnpm --filter @forecast/shared test:cov
+      - name: Prisma migrate + generate
+        run: pnpm --filter @forecast/api exec prisma migrate deploy && pnpm --filter @forecast/api exec prisma generate
+      - name: Build
+        run: pnpm -r build

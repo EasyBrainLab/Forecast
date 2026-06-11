@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/.next
+**/coverage
+.git
+*.csv
+*.xlsx
+*.docx
+daten/
+.env
+.env.*
+!.env.example

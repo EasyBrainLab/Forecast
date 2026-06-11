@@ -1,0 +1,29 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Voraussetzungen (GitHub-Repository-Secrets — Bringschuld §0.3):
+#   SERVER_HOST, SERVER_USER, DEPLOY_SSH_KEY  (Hetzner-VPS)
+# Auf dem Server liegt das Repo in /opt/forecast-portal mit prod-.env.
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH Deploy to Hetzner
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/forecast-portal
+            git pull --ff-only
+            docker compose -f docker-compose.prod.yml build
+            docker compose -f docker-compose.prod.yml run --rm api npx prisma migrate deploy
+            docker compose -f docker-compose.prod.yml up -d
+            sleep 5
+            curl -fsS http://localhost:4000/api/health || (echo "Health-Check fehlgeschlagen" && exit 1)

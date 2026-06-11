@@ -1,0 +1,91 @@
+# Produktion — zentraler Traefik (traefik-proxy), kein eigener Traefik-Service.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - internal
+
+  api:
+    image: ghcr.io/${GITHUB_REPOSITORY}/forecast-api:${IMAGE_TAG:-latest}
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: 8h
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      APP_BASE_URL: https://${DOMAIN}
+      DOMAIN: ${DOMAIN}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SMTP_FROM: ${SMTP_FROM}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL}
+      SEED_ADMIN_NAME: ${SEED_ADMIN_NAME}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD}
+      TZ: Europe/Berlin
+      NODE_ENV: production
+    depends_on:
+      - postgres
+    init: true
+    restart: unless-stopped
+    networks:
+      - internal
+      - traefik-proxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.forecast-api.rule=Host(`${DOMAIN}`) && PathPrefix(`/api`)
+      - traefik.http.routers.forecast-api.entrypoints=websecure
+      - traefik.http.routers.forecast-api.tls.certresolver=cloudflare
+      - traefik.http.services.forecast-api.loadbalancer.server.port=4000
+      - traefik.docker.network=traefik-proxy
+
+  web:
+    image: ghcr.io/${GITHUB_REPOSITORY}/forecast-web:${IMAGE_TAG:-latest}
+    depends_on:
+      - api
+    init: true
+    restart: unless-stopped
+    networks:
+      - internal
+      - traefik-proxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.forecast-web.rule=Host(`${DOMAIN}`)
+      - traefik.http.routers.forecast-web.entrypoints=websecure
+      - traefik.http.routers.forecast-web.tls.certresolver=cloudflare
+      - traefik.http.services.forecast-web.loadbalancer.server.port=3000
+      - traefik.docker.network=traefik-proxy
+
+  backup:
+    image: postgres:16-alpine
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - ./scripts/backup.sh:/backup.sh:ro
+      - backups:/var/backups/forecast
+    depends_on:
+      - postgres
+    entrypoint: ['sh', '-c', 'while true; do sh /backup.sh; sleep 86400; done']
+    restart: unless-stopped
+    networks:
+      - internal
+
+volumes:
+  pgdata:
+  backups:
+
+networks:
+  traefik-proxy:
+    external: true
+  internal:
+    driver: bridge

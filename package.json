@@ -1,0 +1,32 @@
+{
+  "name": "forecast-portal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Forecast-Portal BU Brachytherapie (Eckert & Ziegler) — Budget/Forecast/Ist-Umsatz Mehrbenutzer-Anwendung",
+  "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "test": "pnpm -r test",
+    "dev": "pnpm -r --parallel dev",
+    "prisma:generate": "pnpm --filter @forecast/api prisma:generate",
+    "prisma:migrate": "pnpm --filter @forecast/api prisma:migrate",
+    "seed": "pnpm --filter @forecast/api seed",
+    "initial-import": "pnpm --filter @forecast/api initial-import",
+    "ci:guards": "node scripts/ci-guards.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "@types/node": "^22.7.0",
+    "eslint": "^9.13.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.10.0"
+  }
+}

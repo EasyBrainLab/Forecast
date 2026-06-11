@@ -1,0 +1,515 @@
+// Forecast-Portal BU Brachytherapie — Prisma-Schema (§3 Umsetzungsplan)
+// Domänenfelder Deutsch, Enums UPPERCASE, IDs uuid, Geld Decimal(15,2) in vollem EUR.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────── ENUMS ───────────────
+enum Rolle {
+  AGM
+  VERTRIEBSLEITER
+  BU_LEITER
+  ADMIN
+  SUPPORT
+}
+
+enum UserStatus {
+  EINGELADEN
+  VERIFIZIERT
+  DEAKTIVIERT
+}
+
+enum Company {
+  BBD
+  BBE
+  BBF
+  BMW
+}
+
+enum E1Kategorie {
+  IMPLANT
+  OPHTHALMO
+  AFTERLOADER
+  OTHER
+  ZENTRAL
+}
+
+enum KennzahlTyp {
+  REVENUE
+}
+
+enum BudgetStatus {
+  AKTIV
+  HISTORISIERT
+}
+
+enum BudgetAenderungStatus {
+  ENTWURF
+  BEANTRAGT
+  FREIGABE_VERTRIEBSLEITER
+  FREIGABE_BU_LEITER
+  ABGELEHNT
+  AKTIV
+}
+
+enum ForecastStatus {
+  OFFEN
+  BESTAETIGT
+  ANGEPASST
+  ZURUECKGEWIESEN
+  ABGESCHLOSSEN
+}
+
+enum ImportStatus {
+  HOCHGELADEN
+  VALIDIERT
+  ABGESCHLOSSEN
+  FEHLGESCHLAGEN
+}
+
+enum QuarantaeneStatus {
+  OFFEN
+  GEKLAERT
+  VERWORFEN
+}
+
+enum QuarantaeneGrund {
+  UNBEKANNTE_KOSTENSTELLE
+  LAND_LEER
+  UNBEKANNTES_LAND
+  UNBEKANNTER_LANDNAME
+  UNBEKANNTE_E1
+  UNBEKANNTE_E2
+  WERT_LEER
+  VORZEICHEN_INKONSISTENT
+  UNBEKANNTER_MONAT
+  RECID_DUP_IN_DATEI
+  COMPANY_UNBEKANNT
+}
+
+enum AuditAktion {
+  CREATE
+  UPDATE
+  DELETE
+  STATUS_WECHSEL
+  IMPORT
+  EXPORT
+  LOGIN
+  LOGIN_FEHLER
+  MAIL_FEHLER
+}
+
+// ─────────────── AUTH / USER ───────────────
+model User {
+  id                     String     @id @default(uuid())
+  email                  String     @unique
+  name                   String
+  passwortHash           String?
+  rolle                  Rolle
+  status                 UserStatus @default(EINGELADEN)
+  passwortWechselPflicht Boolean    @default(false)
+  einladungTokenHash     String?    @unique
+  einladungAblauf        DateTime?
+  resetTokenHash         String?    @unique
+  resetAblauf            DateTime?
+  fehlversuche           Int        @default(0)
+  gesperrtBis            DateTime?
+  letzterLogin           DateTime?
+  erstelltAm             DateTime   @default(now())
+  aktualisiertAm         DateTime   @updatedAt
+
+  verantwortungen   RegionsVerantwortung[]
+  forecastVersionen ForecastVersion[]
+  budgetAenderungen BudgetAenderung[]      @relation("Antragsteller")
+  budgetEvents      BudgetAenderungEvent[]
+  importBatches     ImportBatch[]
+  sondereffekte     Sondereffekt[]
+
+  @@index([rolle])
+  @@index([status])
+  @@map("user")
+}
+
+// ─────────────── STAMMDATEN ───────────────
+model Region {
+  code             String   @id
+  bezeichnung      String
+  forecastRelevant Boolean  @default(true)
+  synonyme         String[] @default([])
+  erstelltAm       DateTime @default(now())
+  aktualisiertAm   DateTime @updatedAt
+
+  kostenstellen     Kostenstelle[]
+  verantwortungen   RegionsVerantwortung[]
+  budgets           Budget[]
+  budgetAenderungen BudgetAenderung[]
+  forecastVersionen ForecastVersion[]
+  forecastPerioden  ForecastPeriode[]
+
+  @@map("region")
+}
+
+model Kostenstelle {
+  id             String   @id @default(uuid())
+  nummer         String   @unique
+  bezeichnung    String
+  company        Company
+  istSammel      Boolean  @default(false)
+  regionCode     String
+  erstelltAm     DateTime @default(now())
+  aktualisiertAm DateTime @updatedAt
+
+  region      Region      @relation(fields: [regionCode], references: [code])
+  istUmsaetze IstUmsatz[]
+
+  @@index([regionCode])
+  @@index([company])
+  @@map("kostenstelle")
+}
+
+model RegionsVerantwortung {
+  id             String    @id @default(uuid())
+  userId         String
+  regionCode     String
+  gueltigVon     DateTime
+  gueltigBis     DateTime?
+  geloeschtAm    DateTime?
+  erstelltAm     DateTime  @default(now())
+  aktualisiertAm DateTime  @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id])
+  region Region @relation(fields: [regionCode], references: [code])
+
+  @@index([userId])
+  @@index([regionCode])
+  @@index([gueltigVon, gueltigBis])
+  @@map("regions_verantwortung")
+}
+
+model Land {
+  isoCode        String   @id
+  nameDe         String
+  nameEn         String
+  erstelltAm     DateTime @default(now())
+  aktualisiertAm DateTime @updatedAt
+
+  istUmsaetze       IstUmsatz[]
+  budgets           Budget[]
+  budgetAenderungen BudgetAenderung[]
+  forecastVersionen ForecastVersion[]
+
+  @@index([nameEn])
+  @@map("land")
+}
+
+model ProduktgruppeE1 {
+  id             String      @id @default(uuid())
+  kategorie      E1Kategorie @unique
+  nameDe         String
+  nameEn         String
+  synonyme       String[]    @default([])
+  sortierung     Int         @default(0)
+  erstelltAm     DateTime    @default(now())
+  aktualisiertAm DateTime    @updatedAt
+
+  e2Gruppen         ProduktgruppeE2[]
+  istUmsaetze       IstUmsatz[]
+  budgets           Budget[]
+  budgetAenderungen BudgetAenderung[]
+  forecastVersionen ForecastVersion[]
+
+  @@map("produktgruppe_e1")
+}
+
+model ProduktgruppeE2 {
+  id             String   @id @default(uuid())
+  name           String   @unique
+  e1Id           String
+  synonyme       String[] @default([])
+  istPlatzhalter Boolean  @default(false)
+  erstelltAm     DateTime @default(now())
+  aktualisiertAm DateTime @updatedAt
+
+  e1          ProduktgruppeE1 @relation(fields: [e1Id], references: [id])
+  istUmsaetze IstUmsatz[]
+  budgets     Budget[]
+
+  @@index([e1Id])
+  @@map("produktgruppe_e2")
+}
+
+// ─────────────── IST-UMSATZ ───────────────
+model IstUmsatz {
+  id                String      @id @default(uuid())
+  recid             String      @unique
+  dataareaid        String
+  buchungsdatum     DateTime
+  jahr              Int
+  monat             Int
+  kostenstelleId    String
+  landId            String?
+  e1Id              String
+  e2Id              String?
+  kostentraeger     String?
+  sachkonto         String?
+  postingtype       String?
+  wertEur           Decimal     @db.Decimal(15, 2)
+  kennzahlTyp       KennzahlTyp @default(REVENUE)
+  istSondereffekt   Boolean     @default(false)
+  sondereffektGrund String?
+  importBatchId     String
+  erstelltAm        DateTime    @default(now())
+  aktualisiertAm    DateTime    @updatedAt
+
+  kostenstelle Kostenstelle     @relation(fields: [kostenstelleId], references: [id])
+  land         Land?            @relation(fields: [landId], references: [isoCode])
+  e1           ProduktgruppeE1  @relation(fields: [e1Id], references: [id])
+  e2           ProduktgruppeE2? @relation(fields: [e2Id], references: [id])
+  importBatch  ImportBatch      @relation(fields: [importBatchId], references: [id])
+
+  @@index([jahr, monat])
+  @@index([kostenstelleId])
+  @@index([landId])
+  @@index([e1Id])
+  @@index([importBatchId])
+  @@index([kostenstelleId, landId, e1Id, jahr, monat])
+  @@map("ist_umsatz")
+}
+
+// ─────────────── BUDGET ───────────────
+model Budget {
+  id                String       @id @default(uuid())
+  jahr              Int
+  monat             Int?
+  regionCode        String
+  landId            String?
+  e1Id              String
+  e2Id              String?
+  company           Company
+  kostentraeger     String?
+  wertEur           Decimal?     @db.Decimal(15, 2)
+  units             Decimal?     @db.Decimal(15, 2)
+  asp               Decimal?     @db.Decimal(15, 4)
+  kennzahlTyp       KennzahlTyp  @default(REVENUE)
+  istRegionsreserve Boolean      @default(false)
+  version           Int          @default(1)
+  status            BudgetStatus @default(AKTIV)
+  importBatchId     String?
+  erstelltAm        DateTime     @default(now())
+  aktualisiertAm    DateTime     @updatedAt
+
+  region      Region            @relation(fields: [regionCode], references: [code])
+  land        Land?             @relation(fields: [landId], references: [isoCode])
+  e1          ProduktgruppeE1   @relation(fields: [e1Id], references: [id])
+  e2          ProduktgruppeE2?  @relation(fields: [e2Id], references: [id])
+  aenderungen BudgetAenderung[]
+
+  @@index([jahr, monat])
+  @@index([regionCode])
+  @@index([landId])
+  @@index([e1Id])
+  @@index([status])
+  @@index([jahr, regionCode, landId, e1Id, status])
+  @@map("budget")
+}
+
+model BudgetAenderung {
+  id              String                @id @default(uuid())
+  budgetId        String?
+  antragstellerId String
+  jahr            Int
+  regionCode      String
+  landId          String?
+  e1Id            String
+  altWertEur      Decimal?              @db.Decimal(15, 2)
+  neuWertEur      Decimal               @db.Decimal(15, 2)
+  altUnits        Decimal?              @db.Decimal(15, 2)
+  neuUnits        Decimal?              @db.Decimal(15, 2)
+  begruendung     String
+  status          BudgetAenderungStatus @default(ENTWURF)
+  erstelltAm      DateTime              @default(now())
+
+  budget        Budget?                @relation(fields: [budgetId], references: [id])
+  antragsteller User                   @relation("Antragsteller", fields: [antragstellerId], references: [id])
+  region        Region                 @relation(fields: [regionCode], references: [code])
+  land          Land?                  @relation(fields: [landId], references: [isoCode])
+  e1            ProduktgruppeE1        @relation(fields: [e1Id], references: [id])
+  events        BudgetAenderungEvent[]
+
+  @@index([status])
+  @@index([regionCode])
+  @@index([antragstellerId])
+  @@map("budget_aenderung")
+}
+
+model BudgetAenderungEvent {
+  id          String                 @id @default(uuid())
+  aenderungId String
+  vonStatus   BudgetAenderungStatus?
+  nachStatus  BudgetAenderungStatus
+  byUserId    String
+  begruendung String?
+  erstelltAm  DateTime               @default(now())
+
+  aenderung BudgetAenderung @relation(fields: [aenderungId], references: [id])
+  byUser    User            @relation(fields: [byUserId], references: [id])
+
+  @@index([aenderungId])
+  @@map("budget_aenderung_event")
+}
+
+// ─────────────── FORECAST ───────────────
+model ForecastPeriode {
+  id               String         @id @default(uuid())
+  periode          String
+  jahr             Int
+  monat            Int
+  regionCode       String
+  status           ForecastStatus @default(OFFEN)
+  deadline         DateTime
+  benachrichtigtAm DateTime?
+  erinnerungAm     DateTime?
+  eskalationAm     DateTime?
+  abgeschlossenAm  DateTime?
+  erstelltAm       DateTime       @default(now())
+  aktualisiertAm   DateTime       @updatedAt
+
+  region Region @relation(fields: [regionCode], references: [code])
+
+  @@unique([periode, regionCode])
+  @@index([status])
+  @@index([jahr, monat])
+  @@map("forecast_periode")
+}
+
+model ForecastVersion {
+  id                  String         @id @default(uuid())
+  periode             String
+  jahr                Int
+  monat               Int
+  regionCode          String
+  landId              String
+  e1Id                String
+  monatswerteRest     Json
+  status              ForecastStatus
+  kommentar           String?
+  schwellwertVerletzt Boolean        @default(false)
+  version             Int
+  userId              String
+  erstelltAm          DateTime       @default(now())
+
+  region Region          @relation(fields: [regionCode], references: [code])
+  land   Land            @relation(fields: [landId], references: [isoCode])
+  e1     ProduktgruppeE1 @relation(fields: [e1Id], references: [id])
+  user   User            @relation(fields: [userId], references: [id])
+
+  @@index([periode, regionCode])
+  @@index([regionCode, landId, e1Id])
+  @@index([periode, regionCode, landId, e1Id, version])
+  @@map("forecast_version")
+}
+
+// ─────────────── IMPORT ───────────────
+model ImportBatch {
+  id                  String       @id @default(uuid())
+  typ                 String
+  dateiname           String
+  hash                String
+  monatAbgeschlossen  Boolean      @default(false)
+  zeilenGesamt        Int          @default(0)
+  zeilenNeu           Int          @default(0)
+  zeilenAktualisiert  Int          @default(0)
+  zeilenUebersprungen Int          @default(0)
+  zeilenQuarantaene   Int          @default(0)
+  validierungsbericht Json?
+  status              ImportStatus @default(HOCHGELADEN)
+  ausgeloestVonId     String
+  erstelltAm          DateTime     @default(now())
+  abgeschlossenAm     DateTime?
+
+  ausgeloestVon User                @relation(fields: [ausgeloestVonId], references: [id])
+  istUmsaetze   IstUmsatz[]
+  quarantaene   ImportQuarantaene[]
+
+  @@index([hash])
+  @@index([status])
+  @@map("import_batch")
+}
+
+model ImportQuarantaene {
+  id            String            @id @default(uuid())
+  importBatchId String
+  zeilenNummer  Int
+  recid         String?
+  rohdaten      Json
+  grund         QuarantaeneGrund
+  detail        String?
+  status        QuarantaeneStatus @default(OFFEN)
+  geklaertVonId String?
+  geklaertAm    DateTime?
+  erstelltAm    DateTime          @default(now())
+
+  importBatch ImportBatch @relation(fields: [importBatchId], references: [id])
+
+  @@index([importBatchId])
+  @@index([status])
+  @@map("import_quarantaene")
+}
+
+// ─────────────── AUDIT (append-only) ───────────────
+model AuditTrail {
+  id          String      @id @default(uuid())
+  entitaet    String
+  entitaetId  String?
+  aktion      AuditAktion
+  userId      String?
+  userEmail   String?
+  vorherWert  Json?
+  nachherWert Json?
+  ipAdresse   String?
+  metadaten   Json?
+  erstelltAm  DateTime    @default(now())
+
+  @@index([entitaet, entitaetId])
+  @@index([userId])
+  @@index([aktion])
+  @@index([erstelltAm])
+  @@map("audit_trail")
+}
+
+// ─────────────── KONFIGURATION ───────────────
+model Einstellung {
+  key               String   @id
+  value             String
+  beschreibung      String?
+  aktualisiertAm    DateTime @updatedAt
+  aktualisiertVonId String?
+
+  @@map("einstellung")
+}
+
+model Sondereffekt {
+  id              String   @id @default(uuid())
+  jahr            Int
+  monat           Int?
+  regionCode      String?
+  landId          String?
+  e1Id            String?
+  betragEur       Decimal  @db.Decimal(15, 2)
+  beschreibung    String
+  istEinmaleffekt Boolean  @default(true)
+  erstelltVonId   String
+  erstelltAm      DateTime @default(now())
+  aktualisiertAm  DateTime @updatedAt
+
+  erstelltVon User @relation(fields: [erstelltVonId], references: [id])
+
+  @@index([jahr, monat])
+  @@index([regionCode])
+  @@map("sondereffekt")
+}
