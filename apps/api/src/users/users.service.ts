@@ -58,10 +58,16 @@ export class UsersService {
       },
       select: USER_PUBLIC,
     });
+    // AGM: Region(en) als RegionsVerantwortung zuordnen (Scope). Sonst hätte der AGM keine Daten.
+    if (dto.rolle === 'AGM' && dto.regionCodes?.length) {
+      await this.prisma.regionsVerantwortung.createMany({
+        data: dto.regionCodes.map((regionCode) => ({ userId: user.id, regionCode, gueltigVon: new Date() })),
+      });
+    }
     const einladungUrl = `${this.config.get('APP_BASE_URL')}/einladung/${token}`;
     await this.mail.send(email, einladungMail(dto.name, einladungUrl, tage));
-    await this.audit.write({ entitaet: 'User', entitaetId: user.id, aktion: 'CREATE', userId: aktor.id, userEmail: aktor.email, nachherWert: { email, rolle: dto.rolle } });
-    return { ...user, einladungUrl };
+    await this.audit.write({ entitaet: 'User', entitaetId: user.id, aktion: 'CREATE', userId: aktor.id, userEmail: aktor.email, nachherWert: { email, rolle: dto.rolle, regionCodes: dto.regionCodes ?? [] } });
+    return { ...user, einladungUrl, regionCodes: dto.regionCodes ?? [] };
   }
 
   async reinvite(id: string, aktor: RequestUser) {

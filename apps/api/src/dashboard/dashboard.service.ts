@@ -168,7 +168,8 @@ export class DashboardService {
     const regBez = new Map(regionen.map((r) => [r.code, r.bezeichnung]));
     const forecastRelevant = new Set(regionen.map((r) => r.code));
 
-    const [monGrp, monGrpVor, istKstGrp, e1Grp, landGrp, istYtdAgg, vorjahrYtdAgg] = await Promise.all([
+    const budScope: Prisma.BudgetWhereInput = scope.unbeschraenkt ? {} : { regionCode: { in: scope.regionCodes.length ? scope.regionCodes : ['__none__'] } };
+    const [monGrp, monGrpVor, istKstGrp, e1Grp, landGrp, istYtdAgg, vorjahrYtdAgg, budMonGrp] = await Promise.all([
       this.prisma.istUmsatz.groupBy({ by: ['monat'], where: { jahr, ...kstFilter }, _sum: { wertEur: true } }),
       this.prisma.istUmsatz.groupBy({ by: ['monat'], where: { jahr: jahr - 1, ...kstFilter }, _sum: { wertEur: true } }),
       this.prisma.istUmsatz.groupBy({ by: ['kostenstelleId'], where: { jahr, ...kstFilter }, _sum: { wertEur: true } }),
@@ -176,12 +177,19 @@ export class DashboardService {
       this.prisma.istUmsatz.groupBy({ by: ['landId'], where: { jahr, ...kstFilter }, _sum: { wertEur: true } }),
       this.prisma.istUmsatz.aggregate({ where: { jahr, monat: { lt: st.istGrenze }, ...kstFilter }, _sum: { wertEur: true } }),
       this.prisma.istUmsatz.aggregate({ where: { jahr: jahr - 1, monat: { lt: st.istGrenze }, ...kstFilter }, _sum: { wertEur: true } }),
+      this.prisma.budget.groupBy({ by: ['monat'], where: { jahr, status: 'AKTIV', monat: { not: null }, ...budScope }, _sum: { wertEur: true } }),
     ]);
 
     const MON = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
     const monMap = new Map(monGrp.map((g) => [g.monat, Number(g._sum.wertEur ?? 0)]));
     const monMapVor = new Map(monGrpVor.map((g) => [g.monat, Number(g._sum.wertEur ?? 0)]));
-    const umsatzProMonat = MON.map((m, i) => ({ monat: m, ist: round2(monMap.get(i + 1) ?? 0), vorjahr: round2(monMapVor.get(i + 1) ?? 0) }));
+    const budMonMap = new Map(budMonGrp.map((g) => [g.monat, Number(g._sum.wertEur ?? 0)]));
+    const umsatzProMonat = MON.map((m, i) => ({
+      monat: m,
+      ist: round2(monMap.get(i + 1) ?? 0),
+      vorjahr: round2(monMapVor.get(i + 1) ?? 0),
+      budget: round2(budMonMap.get(i + 1) ?? 0),
+    }));
 
     const istByRegion = new Map<string, number>();
     for (const g of istKstGrp) {

@@ -6,9 +6,9 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   Legend,
   Line,
-  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -28,7 +28,7 @@ interface Kpi {
   jahr: number;
   stichtag: string;
   kennzahlen: { istYtd: number; budget: number; yee: number; abweichungProzent: number | null; vorjahrYtd: number; yoyProzent: number | null };
-  umsatzProMonat: { monat: string; ist: number; vorjahr: number }[];
+  umsatzProMonat: { monat: string; ist: number; vorjahr: number; budget: number }[];
   umsatzProRegion: { regionCode: string; bezeichnung: string; ist: number }[];
   umsatzProProduktgruppe: { produktgruppe: string; ist: number }[];
   topLaender: { land: string; ist: number }[];
@@ -102,16 +102,17 @@ export default function UebersichtPage() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <ChartCard titel={`Umsatzverlauf ${jahr} vs. ${jahr - 1} (kEUR)`}>
-              <LineChart data={data.umsatzProMonat.map((m) => ({ monat: m.monat, Ist: k(m.ist), Vorjahr: k(m.vorjahr) }))}>
+            <ChartCard titel={`Monat: Ist vs. Budget vs. Vorjahr ${jahr} (kEUR)`}>
+              <ComposedChart data={data.umsatzProMonat.map((m) => ({ monat: m.monat, Ist: k(m.ist), Budget: k(m.budget), Vorjahr: k(m.vorjahr) }))}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
                 <XAxis dataKey="monat" fontSize={12} />
                 <YAxis fontSize={12} />
                 <Tooltip formatter={(v) => tip(v as number)} />
                 <Legend />
-                <Line type="monotone" dataKey="Ist" stroke={PRIMARY} strokeWidth={2} dot={false} />
+                <Bar dataKey="Budget" fill="#C9A227" fillOpacity={0.5} />
+                <Line type="monotone" dataKey="Ist" stroke={PRIMARY} strokeWidth={2.5} dot={false} />
                 <Line type="monotone" dataKey="Vorjahr" stroke="#9CA3AF" strokeWidth={2} strokeDasharray="4 4" dot={false} />
-              </LineChart>
+              </ComposedChart>
             </ChartCard>
 
             <ChartCard titel="Ist · Budget · Forecast je Region (kEUR)">
