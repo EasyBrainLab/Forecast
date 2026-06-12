@@ -1,19 +1,29 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 const r = (x: unknown): number => Math.round(Number(x ?? 0));
+
+/** regionCodes = null/undefined -> unbeschränkt (BU); [] -> kein Zugriff (fail-closed); [..] -> nur diese Regionen. */
+type RegionFilter = string[] | null | undefined;
 
 @Injectable()
 export class AbsatzService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async perioden() {
-    const grp = await this.prisma.absatz.groupBy({ by: ['jahr', 'bisMonat'], _count: { _all: true }, orderBy: [{ jahr: 'desc' }, { bisMonat: 'desc' }] });
+  /** Ergänzt die Where-Klausel um den AGM-Region-Filter (null = unbeschränkt). */
+  private rf(regionCodes: RegionFilter): Prisma.AbsatzWhereInput {
+    if (regionCodes === null || regionCodes === undefined) return {};
+    return { regionCode: { in: regionCodes.length ? regionCodes : ['__none__'] } };
+  }
+
+  async perioden(regionCodes?: RegionFilter) {
+    const grp = await this.prisma.absatz.groupBy({ by: ['jahr', 'bisMonat'], where: this.rf(regionCodes), _count: { _all: true }, orderBy: [{ jahr: 'desc' }, { bisMonat: 'desc' }] });
     return grp.map((g) => ({ jahr: g.jahr, bisMonat: g.bisMonat, zeilen: g._count._all }));
   }
 
-  async kpi(jahr: number, bisMonat: number) {
-    const where = { jahr, bisMonat };
+  async kpi(jahr: number, bisMonat: number, regionCodes?: RegionFilter) {
+    const where: Prisma.AbsatzWhereInput = { jahr, bisMonat, ...this.rf(regionCodes) };
     const [agg, landGrp, kundeGrp, laender] = await Promise.all([
       this.prisma.absatz.aggregate({ where, _sum: { seeds: true, seedsVorjahr: true, ruthen: true, ruthenVorjahr: true, icTotal: true, isTotal: true, s16: true, s16Vorjahr: true } }),
       this.prisma.absatz.groupBy({ by: ['landId'], where, _sum: { seeds: true, seedsVorjahr: true } }),
@@ -51,9 +61,9 @@ export class AbsatzService {
     };
   }
 
-  async daten(jahr: number, bisMonat: number, page = 1, pageSize = 50, landId?: string) {
+  async daten(jahr: number, bisMonat: number, page = 1, pageSize = 50, landId?: string, regionCodes?: RegionFilter) {
     const ps = Math.min(Math.max(pageSize, 1), 200);
-    const where = { jahr, bisMonat, ...(landId ? { landId } : {}) };
+    const where: Prisma.AbsatzWhereInput = { jahr, bisMonat, ...(landId ? { landId } : {}), ...this.rf(regionCodes) };
     const [total, items, laender] = await Promise.all([
       this.prisma.absatz.count({ where }),
       this.prisma.absatz.findMany({ where, orderBy: { seeds: 'desc' }, skip: (page - 1) * ps, take: ps }),

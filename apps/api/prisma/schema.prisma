@@ -533,6 +533,7 @@ model Absatz {
   s16           Decimal  @db.Decimal(15, 2)
   s16Vorjahr    Decimal  @db.Decimal(15, 2)
   details       Json // volle Spalten (IC S06/S17, IS S06/S17, % of Total ...)
+  regionCode    String? // beim Import aus KundeRegion-Mapping aufgelöst (null = nicht zugeordnet, nur BU-weit sichtbar)
   importBatchId String
   erstelltAm    DateTime @default(now())
 
@@ -541,5 +542,87 @@ model Absatz {
 
   @@index([jahr, bisMonat])
   @@index([landId])
+  @@index([regionCode])
   @@map("absatz")
+}
+
+// ─────────────── KUNDE → REGION (Admin-pflegbar; ermöglicht AGM-Scoping des Absatzes) ───────────────
+model KundeRegion {
+  id             String   @id @default(uuid())
+  kunde          String   @unique // exakter SOL_DELIVERYADDRESSNAME
+  regionCode     String
+  erstelltAm     DateTime @default(now())
+  aktualisiertAm DateTime @updatedAt
+
+  @@index([regionCode])
+  @@map("kunde_region")
+}
+
+// ─────────────── AGM-STATEMENTS (strukturierte Vertriebskommentare je Periode/Region) ───────────────
+enum AbweichungsGrund {
+  KEINE_ABWEICHUNG
+  MARKT
+  WETTBEWERB
+  PREIS
+  PROJEKTVERSCHIEBUNG
+  REGULATORISCH
+  LIEFERFAEHIGKEIT
+  EINMALEFFEKT
+  SONSTIGES
+}
+
+enum StatementStatus {
+  ENTWURF
+  EINGEREICHT
+}
+
+model AgmStatement {
+  id                  String           @id @default(uuid())
+  periode             String // "JJJJ-MM"
+  jahr                Int
+  monat               Int
+  regionCode          String
+  userId              String // erfassender AGM
+  userName            String // denormalisiert (Anzeige ohne Join)
+  abweichungGrund     AbweichungsGrund @default(KEINE_ABWEICHUNG)
+  abweichungKommentar String?
+  risiken             String?
+  chancen             String?
+  pipeline            String?
+  kundenGewonnen      String?
+  kundenVerloren      String?
+  preisWettbewerb     String?
+  forecastRealistisch Boolean          @default(true)
+  forecastKommentar   String?
+  actionItems         Json             @default("[]") // [{beschreibung, faelligBis, erledigt}]
+  status              StatementStatus  @default(ENTWURF)
+  eingereichtAm       DateTime?
+  erstelltAm          DateTime         @default(now())
+  aktualisiertAm      DateTime         @updatedAt
+
+  @@unique([periode, regionCode])
+  @@index([status])
+  @@index([jahr, monat])
+  @@map("agm_statement")
+}
+
+// ─────────────── SALES-FLASH-BELEG + RECONCILIATION (Controlling-PDF je Monat) ───────────────
+model SalesFlashDokument {
+  id               String   @id @default(uuid())
+  jahr             Int
+  monat            Int // Berichtsmonat (kumuliert Jan..monat)
+  dateiname        String
+  mimeType         String
+  groesseBytes     Int
+  inhalt           Bytes // PDF-Binär
+  actuals          Json     @default("{}") // {total, regionen:[{regionCode, eur}]}
+  kommentar        String?
+  hochgeladenVonId String
+  hochgeladenVon   String // denormalisiert (E-Mail)
+  erstelltAm       DateTime @default(now())
+  aktualisiertAm   DateTime @updatedAt
+
+  @@unique([jahr, monat])
+  @@index([jahr, monat])
+  @@map("sales_flash_dokument")
 }

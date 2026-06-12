@@ -40,6 +40,8 @@ export class AbsatzImportService {
   async importiere(buffer: Buffer, dateiname: string, periode: { jahr: number; bisMonat: number }, aktor: { id: string; email: string }): Promise<{ batchId: string; bericht: AbsatzBericht }> {
     const records = parse(buffer, { bom: true, delimiter: ',', columns: true, skip_empty_lines: true, trim: false }) as Record<string, string>[];
     const laender = new Set((await this.prisma.land.findMany({ select: { isoCode: true } })).map((l) => l.isoCode));
+    // Kunden->Region-Mapping für AGM-Scoping (nicht zugeordnet -> regionCode null, nur BU-weit sichtbar)
+    const kundeRegion = new Map((await this.prisma.kundeRegion.findMany({ select: { kunde: true, regionCode: true } })).map((k) => [k.kunde, k.regionCode]));
 
     const batch = await this.prisma.importBatch.create({
       data: { typ: 'ABSATZ', dateiname, hash: createHash('sha256').update(buffer).digest('hex'), ausgeloestVonId: aktor.id, status: 'HOCHGELADEN', zeilenGesamt: records.length },
@@ -63,11 +65,13 @@ export class AbsatzImportService {
       seedsGesamt += seeds;
       seedsVorjahr += seedsPY;
       ruthenGesamt += ruthen;
+      const kunde = (r['SOL_DELIVERYADDRESSNAME'] ?? '').trim() || 'Unbekannt';
       inserts.push({
         jahr: periode.jahr,
         bisMonat: periode.bisMonat,
         landId: iso,
-        kunde: (r['SOL_DELIVERYADDRESSNAME'] ?? '').trim() || 'Unbekannt',
+        kunde,
+        regionCode: kundeRegion.get(kunde) ?? null,
         stadt: (r['SO_DELIVERYADDRESSCITY'] ?? '').trim() || null,
         seeds,
         seedsVorjahr: seedsPY,

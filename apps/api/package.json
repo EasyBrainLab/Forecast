@@ -23,7 +23,8 @@
     "verify:forecast-wf": "ts-node --transpile-only scripts/verify-forecast-workflow.ts",
     "verify:dashboard": "ts-node --transpile-only scripts/verify-dashboard.ts",
     "verify:export": "ts-node --transpile-only scripts/verify-export.ts",
-    "verify:absatz": "ts-node --transpile-only scripts/verify-absatz.ts"
+    "verify:absatz": "ts-node --transpile-only scripts/verify-absatz.ts",
+    "verify:erweiterungen": "ts-node --transpile-only scripts/verify-erweiterungen.ts"
   },
   "prisma": {
     "seed": "ts-node --transpile-only prisma/seed.ts"
