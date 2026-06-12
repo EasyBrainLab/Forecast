@@ -18,6 +18,9 @@ interface Bericht {
   budgetZeilen?: number;
   reserveZeilen?: number;
   summenJeJahr?: { jahr: number; summeEur: number }[];
+  seedsGesamt?: number;
+  seedsVorjahr?: number;
+  zeilenImportiert?: number;
 }
 interface Uebersicht {
   ist: { zeilen: number; summeEur: number; jahre: { jahr: number; zeilen: number }[]; letzterImport: { dateiname: string; status: string; zeilenNeu: number; erstelltAm: string } | null };
@@ -117,7 +120,13 @@ function ImportKachel({ titel, beschreibung, endpoint, accept }: { titel: string
       {phase === 'fertig' && b && (
         <div className="space-y-2 rounded border border-ez-ampelGruen/40 bg-ez-ampelGruen/5 p-3 text-sm">
           <p className="font-semibold text-ez-ampelGruen">✓ Import erfolgreich verarbeitet</p>
-          {b.zeilenGesamt !== undefined ? (
+          {b.seedsGesamt !== undefined ? (
+            <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-700 sm:grid-cols-3">
+              <li>Zeilen importiert: <strong>{eur(b.zeilenImportiert)}</strong></li>
+              <li>Seeds gesamt: <strong>{eur(b.seedsGesamt)}</strong></li>
+              <li>Seeds Vorjahr: <strong>{eur(b.seedsVorjahr)}</strong></li>
+            </ul>
+          ) : b.zeilenGesamt !== undefined ? (
             <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-700 sm:grid-cols-3">
               <li>Zeilen gesamt: <strong>{eur(b.zeilenGesamt)}</strong></li>
               <li>Neu: <strong>{eur(b.zeilenNeu)}</strong></li>
@@ -194,6 +203,12 @@ export default function ImportPage() {
         beschreibung="Wide-Format-Budgetdatei. Wird in das normalisierte Long-Format überführt und versioniert."
         endpoint="/budgets/import"
         accept=".xlsx"
+      />
+      <ImportKachel
+        titel="Absatz / Stückzahlen (CSV)"
+        beschreibung="Verkaufsmengen je Land/Kunde (Power-BI-Export SF_MM_MM_JJJJ…). Periode wird aus dem Dateinamen erkannt; Vorjahr ist in der Datei enthalten."
+        endpoint="/absatz/import"
+        accept=".csv"
       />
     </div>
   );

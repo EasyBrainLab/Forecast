@@ -17,6 +17,7 @@ import { ForecastModule } from './forecast/forecast.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ExportModule } from './export/export.module';
 import { StammdatenModule } from './stammdaten/stammdaten.module';
+import { AbsatzModule } from './absatz/absatz.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -40,6 +41,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
     DashboardModule,
     ExportModule,
     StammdatenModule,
+    AbsatzModule,
   ],
   providers: [
     // Reihenfolge = Ausführungsreihenfolge: Throttler -> JwtAuth -> Roles

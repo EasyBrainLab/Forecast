@@ -202,6 +202,7 @@ model Land {
   budgets           Budget[]
   budgetAenderungen BudgetAenderung[]
   forecastVersionen ForecastVersion[]
+  absaetze          Absatz[]
 
   @@index([nameEn])
   @@map("land")
@@ -435,6 +436,7 @@ model ImportBatch {
   ausgeloestVon User                @relation(fields: [ausgeloestVonId], references: [id])
   istUmsaetze   IstUmsatz[]
   quarantaene   ImportQuarantaene[]
+  absaetze      Absatz[]
 
   @@index([hash])
   @@index([status])
@@ -512,4 +514,32 @@ model Sondereffekt {
   @@index([jahr, monat])
   @@index([regionCode])
   @@map("sondereffekt")
+}
+
+// ─────────────── ABSATZ / STÜCKZAHLEN (kunden-/länderscharf, kumuliert je Periode, mit Vorjahr) ───────────────
+model Absatz {
+  id            String   @id @default(uuid())
+  jahr          Int
+  bisMonat      Int // kumuliert Jan..bisMonat (z.B. 5 = Jan-Mai)
+  landId        String
+  kunde         String // SOL_DELIVERYADDRESSNAME
+  stadt         String?
+  seeds         Decimal  @db.Decimal(15, 2)
+  seedsVorjahr  Decimal  @db.Decimal(15, 2)
+  ruthen        Decimal  @db.Decimal(15, 2)
+  ruthenVorjahr Decimal  @db.Decimal(15, 2)
+  icTotal       Decimal  @db.Decimal(15, 2)
+  isTotal       Decimal  @db.Decimal(15, 2)
+  s16           Decimal  @db.Decimal(15, 2)
+  s16Vorjahr    Decimal  @db.Decimal(15, 2)
+  details       Json // volle Spalten (IC S06/S17, IS S06/S17, % of Total ...)
+  importBatchId String
+  erstelltAm    DateTime @default(now())
+
+  land        Land        @relation(fields: [landId], references: [isoCode])
+  importBatch ImportBatch @relation(fields: [importBatchId], references: [id])
+
+  @@index([jahr, bisMonat])
+  @@index([landId])
+  @@map("absatz")
 }

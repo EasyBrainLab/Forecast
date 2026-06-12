@@ -22,7 +22,8 @@
     "verify:budget-wf": "ts-node --transpile-only scripts/verify-budget-workflow.ts",
     "verify:forecast-wf": "ts-node --transpile-only scripts/verify-forecast-workflow.ts",
     "verify:dashboard": "ts-node --transpile-only scripts/verify-dashboard.ts",
-    "verify:export": "ts-node --transpile-only scripts/verify-export.ts"
+    "verify:export": "ts-node --transpile-only scripts/verify-export.ts",
+    "verify:absatz": "ts-node --transpile-only scripts/verify-absatz.ts"
   },
   "prisma": {
     "seed": "ts-node --transpile-only prisma/seed.ts"

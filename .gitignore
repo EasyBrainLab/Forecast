@@ -24,12 +24,21 @@ packages/shared/prisma/generated/
 apps/api/prisma/generated/
 
 # ── VERTRAULICHE REALDATEN — NIEMALS ins Git (Finanzdaten) ──
+# Root
 /External_Revenue_BU_Therapie.csv
 /Budget_Umsatz_ProLand_ProAGM.xlsx
 /Forecast_2026_03_Therapy_Consolidated.xlsx
 /Fachkonzept_Forecast_Portal_BU_Brachytherapie_v1.0.docx
 /daten/
 *.local.csv
+# Datendateien überall (docs/ enthält nur .md im Git) — Finanzdaten ausschließen
+docs/*.pdf
+docs/*.csv
+docs/*.xlsx
+docs/*.xls
+docs/*.docx
+**/Sales Flash*.pdf
+**/SF_*.csv
 
 # OS / Editor
 .DS_Store
