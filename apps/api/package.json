@@ -15,6 +15,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "seed": "ts-node --transpile-only prisma/seed.ts",
+    "set-admin": "ts-node --transpile-only scripts/set-admin-password.ts",
     "initial-import": "ts-node --transpile-only scripts/initial-import.ts",
     "verify:ist": "ts-node --transpile-only scripts/verify-ist-import.ts",
     "verify:budget": "ts-node --transpile-only scripts/verify-budget-import.ts",
