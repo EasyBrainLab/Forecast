@@ -18,7 +18,7 @@ export default function LoginPage() {
     setBusy(true);
     try {
       await login(email, passwort);
-      router.replace('/dashboard');
+      router.replace('/uebersicht');
     } catch (err) {
       setFehler((err as Error).message ?? 'Anmeldung fehlgeschlagen');
     } finally {

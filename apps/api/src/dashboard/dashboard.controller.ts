@@ -26,6 +26,48 @@ export class DashboardController {
     return this.service.konsolidierung(Number(jahr) || new Date().getUTCFullYear(), aktor, bereinigt === 'true');
   }
 
+  private j(q?: string): number {
+    return Number(q) || new Date().getUTCFullYear();
+  }
+
+  @Roles(...ALLE_ROLLEN)
+  @Get('kpi')
+  kpi(@Query('jahr') jahr: string, @CurrentUser() aktor: RequestUser) {
+    return this.service.kpi(this.j(jahr), aktor);
+  }
+
+  @Roles(...ALLE_ROLLEN)
+  @Get('uebersicht')
+  uebersicht(@CurrentUser() aktor: RequestUser) {
+    return this.service.uebersicht(aktor);
+  }
+
+  @Roles(...ALLE_ROLLEN)
+  @Get('ist-daten')
+  istDaten(
+    @Query('jahr') jahr: string,
+    @Query('regionCode') regionCode: string | undefined,
+    @Query('landId') landId: string | undefined,
+    @Query('e1Id') e1Id: string | undefined,
+    @Query('page') page: string | undefined,
+    @Query('pageSize') pageSize: string | undefined,
+    @CurrentUser() aktor: RequestUser,
+  ) {
+    return this.service.istDaten(this.j(jahr), aktor, { regionCode, landId, e1Id }, Number(page) || 1, Number(pageSize) || 50);
+  }
+
+  @Roles(...ALLE_ROLLEN)
+  @Get('budget-daten')
+  budgetDaten(
+    @Query('jahr') jahr: string,
+    @Query('regionCode') regionCode: string | undefined,
+    @Query('page') page: string | undefined,
+    @Query('pageSize') pageSize: string | undefined,
+    @CurrentUser() aktor: RequestUser,
+  ) {
+    return this.service.budgetDaten(this.j(jahr), aktor, { regionCode }, Number(page) || 1, Number(pageSize) || 50);
+  }
+
   @Roles(...ALLE_ROLLEN)
   @Get('drilldown')
   drilldown(

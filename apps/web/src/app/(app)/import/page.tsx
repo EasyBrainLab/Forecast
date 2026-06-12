@@ -1,65 +1,200 @@
 'use client';
-import { useState } from 'react';
-import { getToken } from '@/lib/api';
-import { Card } from '@/components/ui';
+import { useRef, useState } from 'react';
+import Link from 'next/link';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, getToken } from '@/lib/api';
+import { Button, Card } from '@/components/ui';
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 
-async function upload(pfad: string, file: File): Promise<Record<string, unknown>> {
-  const fd = new FormData();
-  fd.append('file', file);
-  const res = await fetch(`${BASE}${pfad}`, { method: 'POST', headers: { Authorization: `Bearer ${getToken()}` }, body: fd });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.message ?? 'Import fehlgeschlagen');
-  return data;
+interface Bericht {
+  zeilenGesamt?: number;
+  zeilenNeu?: number;
+  zeilenAktualisiert?: number;
+  zeilenUebersprungen?: number;
+  zeilenQuarantaene?: number;
+  summeGesamtEur?: number;
+  summenJeRegion?: { regionCode: string; summeEur: number }[];
+  budgetZeilen?: number;
+  reserveZeilen?: number;
+  summenJeJahr?: { jahr: number; summeEur: number }[];
+}
+interface Uebersicht {
+  ist: { zeilen: number; summeEur: number; jahre: { jahr: number; zeilen: number }[]; letzterImport: { dateiname: string; status: string; zeilenNeu: number; erstelltAm: string } | null };
+  budget: { zeilen: number; letzterImport: { dateiname: string; status: string; erstelltAm: string } | null };
 }
 
-function Bericht({ data }: { data: Record<string, unknown> }) {
-  const b = (data.bericht ?? data) as Record<string, unknown>;
+function upload(pfad: string, file: File, onProgress: (p: number) => void): Promise<{ bericht: Bericht }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${BASE}${pfad}`);
+    xhr.setRequestHeader('Authorization', `Bearer ${getToken()}`);
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(Math.round((e.loaded / e.total) * 100));
+    xhr.onload = () => {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+        else reject(new Error(Array.isArray(data?.message) ? data.message.join(', ') : data?.message ?? `Fehler ${xhr.status}`));
+      } catch {
+        reject(new Error(`Unerwartete Antwort (${xhr.status})`));
+      }
+    };
+    xhr.onerror = () => reject(new Error('Netzwerkfehler beim Upload'));
+    const fd = new FormData();
+    fd.append('file', file);
+    xhr.send(fd);
+  });
+}
+
+const eur = (v?: number): string => (v ?? 0).toLocaleString('de-DE', { maximumFractionDigits: 0 });
+
+function ImportKachel({ titel, beschreibung, endpoint, accept }: { titel: string; beschreibung: string; endpoint: string; accept: string }) {
+  const qc = useQueryClient();
+  const ref = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [phase, setPhase] = useState<'idle' | 'upload' | 'verarbeite' | 'fertig' | 'fehler'>('idle');
+  const [progress, setProgress] = useState(0);
+  const [bericht, setBericht] = useState<Bericht | null>(null);
+  const [fehler, setFehler] = useState('');
+
+  const start = async () => {
+    if (!file) return;
+    setFehler('');
+    setBericht(null);
+    setPhase('upload');
+    setProgress(0);
+    try {
+      const res = await upload(endpoint, file, (p) => {
+        setProgress(p);
+        if (p >= 100) setPhase('verarbeite');
+      });
+      setBericht(res.bericht);
+      setPhase('fertig');
+      qc.invalidateQueries({ queryKey: ['uebersicht'] });
+    } catch (e) {
+      setFehler((e as Error).message);
+      setPhase('fehler');
+    }
+  };
+
+  const b = bericht;
+  const nichtsNeu = b && (b.zeilenNeu ?? 0) === 0 && (b.zeilenAktualisiert ?? 0) === 0 && (b.zeilenGesamt ?? b.budgetZeilen ?? 0) > 0;
+
   return (
-    <pre className="mt-2 max-h-64 overflow-auto rounded bg-gray-50 p-2 text-xs">{JSON.stringify(b, null, 2)}</pre>
+    <Card className="space-y-3">
+      <div>
+        <h2 className="font-semibold text-ez-primary">{titel}</h2>
+        <p className="text-sm text-gray-500">{beschreibung}</p>
+      </div>
+
+      <div
+        onClick={() => ref.current?.click()}
+        className="cursor-pointer rounded-lg border-2 border-dashed border-gray-300 p-6 text-center hover:border-ez-primary"
+      >
+        <input ref={ref} type="file" accept={accept} className="hidden" onChange={(e) => { setFile(e.target.files?.[0] ?? null); setPhase('idle'); setBericht(null); setFehler(''); }} />
+        {file ? (
+          <span className="text-sm">
+            📄 <strong>{file.name}</strong> ({(file.size / 1024).toLocaleString('de-DE', { maximumFractionDigits: 0 })} KB)
+          </span>
+        ) : (
+          <span className="text-sm text-gray-500">Datei hierher ziehen oder klicken zum Auswählen ({accept})</span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-3">
+        <Button onClick={start} disabled={!file || phase === 'upload' || phase === 'verarbeite'}>
+          {phase === 'upload' ? `Lädt… ${progress}%` : phase === 'verarbeite' ? 'Verarbeite…' : 'Hochladen & verarbeiten'}
+        </Button>
+        {(phase === 'upload' || phase === 'verarbeite') && (
+          <div className="h-2 flex-1 overflow-hidden rounded bg-gray-200">
+            <div className="h-full bg-ez-primary transition-all" style={{ width: `${phase === 'verarbeite' ? 100 : progress}%` }} />
+          </div>
+        )}
+      </div>
+
+      {phase === 'fehler' && <p className="rounded bg-ez-accent/10 p-2 text-sm text-ez-accent">✗ {fehler}</p>}
+
+      {phase === 'fertig' && b && (
+        <div className="space-y-2 rounded border border-ez-ampelGruen/40 bg-ez-ampelGruen/5 p-3 text-sm">
+          <p className="font-semibold text-ez-ampelGruen">✓ Import erfolgreich verarbeitet</p>
+          {b.zeilenGesamt !== undefined ? (
+            <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-700 sm:grid-cols-3">
+              <li>Zeilen gesamt: <strong>{eur(b.zeilenGesamt)}</strong></li>
+              <li>Neu: <strong>{eur(b.zeilenNeu)}</strong></li>
+              <li>Aktualisiert: <strong>{eur(b.zeilenAktualisiert)}</strong></li>
+              <li>Übersprungen: <strong>{eur(b.zeilenUebersprungen)}</strong></li>
+              <li>Quarantäne: <strong>{eur(b.zeilenQuarantaene)}</strong></li>
+              <li>Σ Umsatz: <strong>{eur(b.summeGesamtEur)} €</strong></li>
+            </ul>
+          ) : (
+            <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-700 sm:grid-cols-3">
+              <li>Budget-Zeilen: <strong>{eur(b.budgetZeilen)}</strong></li>
+              <li>Regionsreserve: <strong>{eur(b.reserveZeilen)}</strong></li>
+              <li>Quarantäne: <strong>{eur(b.zeilenQuarantaene)}</strong></li>
+            </ul>
+          )}
+          {nichtsNeu && (
+            <p className="text-gray-600">ℹ️ Diese Daten waren bereits vollständig im System vorhanden — es wurde nichts Neues importiert (idempotent). Die Werte stehen der Anwendung zur Verfügung.</p>
+          )}
+          {b.summenJeRegion && (
+            <div className="text-xs text-gray-500">
+              Summen je Region: {b.summenJeRegion.map((s) => `${s.regionCode} ${eur(s.summeEur)} €`).join(' · ')}
+            </div>
+          )}
+          <Link href="/daten" className="inline-block text-ez-primary underline">
+            → Daten als Tabelle ansehen
+          </Link>
+        </div>
+      )}
+    </Card>
   );
 }
 
 export default function ImportPage() {
-  const [ist, setIst] = useState<Record<string, unknown> | null>(null);
-  const [budget, setBudget] = useState<Record<string, unknown> | null>(null);
-  const [busy, setBusy] = useState('');
-  const [err, setErr] = useState('');
-
-  const run = async (typ: 'ist' | 'budget', pfad: string, file?: File): Promise<void> => {
-    if (!file) return;
-    setErr('');
-    setBusy(typ);
-    try {
-      const r = await upload(pfad, file);
-      if (typ === 'ist') setIst(r);
-      else setBudget(r);
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setBusy('');
-    }
-  };
+  const { data } = useQuery({ queryKey: ['uebersicht'], queryFn: () => api.get<Uebersicht>('/dashboard/uebersicht') });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <h1 className="text-2xl font-bold text-ez-primary">Datenimport</h1>
-      {err && <p className="text-sm text-ez-accent">{err}</p>}
 
       <Card>
-        <h2 className="font-semibold">Ist-Umsätze (CSV)</h2>
-        <p className="mb-3 text-sm text-gray-500">GL-Abriss „External Revenue", idempotent über RECID.</p>
-        <input type="file" accept=".csv" onChange={(e) => run('ist', '/ist-import/upload', e.target.files?.[0])} disabled={busy === 'ist'} />
-        {ist && <Bericht data={ist} />}
+        <h2 className="mb-2 text-sm font-semibold text-ez-primary">Aktuell im System</h2>
+        {!data ? (
+          <p className="text-sm text-gray-500">Lädt…</p>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded bg-gray-50 p-3 text-sm">
+              <div className="font-medium">Ist-Umsätze</div>
+              <div className="text-gray-600">
+                {data.ist.zeilen.toLocaleString('de-DE')} Zeilen · Σ {eur(data.ist.summeEur)} € · Jahre {data.ist.jahre.map((j) => j.jahr).join(', ') || '—'}
+              </div>
+              <div className="text-xs text-gray-400">
+                {data.ist.letzterImport ? `Letzter Import: ${data.ist.letzterImport.dateiname} (${new Date(data.ist.letzterImport.erstelltAm).toLocaleString('de-DE')})` : 'Noch kein Import'}
+              </div>
+            </div>
+            <div className="rounded bg-gray-50 p-3 text-sm">
+              <div className="font-medium">Budget</div>
+              <div className="text-gray-600">{data.budget.zeilen.toLocaleString('de-DE')} aktive Zeilen</div>
+              <div className="text-xs text-gray-400">
+                {data.budget.letzterImport ? `Letzter Import: ${data.budget.letzterImport.dateiname} (${new Date(data.budget.letzterImport.erstelltAm).toLocaleString('de-DE')})` : 'Noch kein Import'}
+              </div>
+            </div>
+          </div>
+        )}
       </Card>
 
-      <Card>
-        <h2 className="font-semibold">Budget (Excel)</h2>
-        <p className="mb-3 text-sm text-gray-500">Wide-Format, wird in Long-Format überführt (Versionierung).</p>
-        <input type="file" accept=".xlsx" onChange={(e) => run('budget', '/budgets/import', e.target.files?.[0])} disabled={busy === 'budget'} />
-        {budget && <Bericht data={budget} />}
-      </Card>
+      <ImportKachel
+        titel="Ist-Umsätze (CSV)"
+        beschreibung="GL-Abriss External Revenue BU Therapie. Idempotent über RECID — mehrfacher Upload derselben Datei ist unschädlich."
+        endpoint="/ist-import/upload"
+        accept=".csv"
+      />
+      <ImportKachel
+        titel="Budget (Excel)"
+        beschreibung="Wide-Format-Budgetdatei. Wird in das normalisierte Long-Format überführt und versioniert."
+        endpoint="/budgets/import"
+        accept=".xlsx"
+      />
     </div>
   );
 }
