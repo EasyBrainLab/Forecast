@@ -27,7 +27,8 @@ const PALETTE = ['#0F516A', '#AA003C', '#3B8EA5', '#C9A227', '#5A7D5A', '#8C6BB1
 interface Kpi {
   jahr: number;
   stichtag: string;
-  kennzahlen: { istYtd: number; budget: number; yee: number; abweichungProzent: number | null; vorjahrYtd: number; yoyProzent: number | null };
+  istQuelle?: 'SALES_FLASH' | 'GL';
+  kennzahlen: { istYtd: number; istYtdGL?: number; budget: number; yee: number; abweichungProzent: number | null; vorjahrYtd: number; yoyProzent: number | null };
   umsatzProMonat: { monat: string; ist: number; vorjahr: number; budget: number }[];
   umsatzProRegion: { regionCode: string; bezeichnung: string; ist: number }[];
   umsatzProProduktgruppe: { produktgruppe: string; ist: number }[];
@@ -85,7 +86,11 @@ export default function UebersichtPage() {
       {data && (
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <KpiCard titel="Ist YTD" wert={mio(data.kennzahlen.istYtd)} sub={`Stichtag ${data.stichtag}`} />
+            <KpiCard
+              titel="Ist YTD"
+              wert={mio(data.kennzahlen.istYtd)}
+              sub={data.istQuelle === 'SALES_FLASH' ? `Controlling (Sales Flash) · ${data.stichtag}` : `GL External Revenue · ${data.stichtag}`}
+            />
             <KpiCard titel="Budget (Jahr)" wert={mio(data.kennzahlen.budget)} />
             <KpiCard titel="YEE (Hochrechnung)" wert={mio(data.kennzahlen.yee)} farbe={FORECAST} />
             <KpiCard

@@ -11,6 +11,7 @@ const NAV: { href: string; label: string; rollen: Rolle[] }[] = [
   { href: '/konsolidierung', label: 'Konsolidierung', rollen: ['VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN'] },
   { href: '/absatz', label: 'Absatz / Stückzahlen', rollen: ['AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT'] },
   { href: '/reconciliation', label: 'Sales-Flash & Abgleich', rollen: ['VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT'] },
+  { href: '/periode', label: 'Monatsabschluss', rollen: ['VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT'] },
   { href: '/daten', label: 'Rohdaten', rollen: ['AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT'] },
   { href: '/status-board', label: 'Status-Board', rollen: ['VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT'] },
   { href: '/import', label: 'Import', rollen: ['BU_LEITER', 'ADMIN'] },

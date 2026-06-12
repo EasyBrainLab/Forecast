@@ -115,7 +115,8 @@ export class SalesFlashService {
         deltaProzent: delta === null || toolIst === 0 ? null : round2((delta / Math.abs(toolIst)) * 100),
       };
     });
-    const toolIstGesamt = [...istByRegion.values()].reduce((s, v) => s + v, 0);
+    // Nur forecast-relevante Regionen summieren (ZENTRAL ist nicht Teil des Sales-Flash-Totals) -> sauberer Abgleich
+    const toolIstGesamt = zeilen.reduce((s, z) => s + z.toolIst, 0);
     const controllingGesamt = actuals.total ?? (actuals.regionen.length ? actuals.regionen.reduce((s, r) => s + r.eur, 0) : null);
     const deltaGesamt = controllingGesamt === null ? null : controllingGesamt - toolIstGesamt;
 

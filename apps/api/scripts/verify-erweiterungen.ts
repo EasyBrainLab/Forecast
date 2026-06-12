@@ -9,6 +9,8 @@ import { AbsatzImportService, parsePeriodeAusDateiname } from '../src/absatz/abs
 import { KundeRegionService } from '../src/absatz/kunde-region.service';
 import { AgmStatementService } from '../src/agm-statement/agm-statement.service';
 import { SalesFlashService } from '../src/sales-flash/sales-flash.service';
+import { DashboardService } from '../src/dashboard/dashboard.service';
+import { PeriodeService } from '../src/periode/periode.service';
 import type { RequestUser } from '../src/common/decorators/current-user.decorator';
 
 async function main(): Promise<void> {
@@ -19,6 +21,8 @@ async function main(): Promise<void> {
   const kundeRegion = app.get(KundeRegionService);
   const statements = app.get(AgmStatementService);
   const salesFlash = app.get(SalesFlashService);
+  const dashboard = app.get(DashboardService);
+  const periodeSvc = app.get(PeriodeService);
 
   const admin = await prisma.user.findFirstOrThrow({ where: { rolle: 'ADMIN' } });
   const adminAktor: RequestUser = { id: admin.id, email: admin.email, rolle: 'ADMIN' };
@@ -101,10 +105,40 @@ async function main(): Promise<void> {
     check('Sales-Flash auto-ausgelesen (Total 7.667.781, 5 Regionen)', flashUp.autoAusgelesen && flashUp.total === 7667781 && flashUp.regionenErkannt === 5);
     check('Auto-Fill: EP-Actual = 1.379.298', recon0.zeilen.find((z) => z.regionCode === 'EP')?.controllingActual === 1379298);
     check('Auto-Fill: CS(Radiotherapy)-Actual = 2.182.627', recon0.zeilen.find((z) => z.regionCode === 'CS')?.controllingActual === 2182627);
-    check('Reconciliation-Delta gesamt ~ +179.817', Math.abs((recon0.gesamt.deltaEur ?? 0) - (7667781 - recon0.gesamt.toolIst)) < 1);
+    check('Reconciliation-Delta gesamt (Sales-Flash minus Tool-Ist)', Math.abs((recon0.gesamt.deltaEur ?? 0) - (7667781 - recon0.gesamt.toolIst)) < 1);
     console.log(`  Tool-Ist ${recon0.gesamt.toolIst} | Controlling ${recon0.gesamt.controllingActual} | Delta ${recon0.gesamt.deltaEur} (${recon0.gesamt.deltaProzent}%)`);
   } else {
     console.log('  (Sales-Flash-PDF nicht vorhanden — Auto-Parser-Test übersprungen)');
+  }
+
+  // ── K1: Wahrheits-Hierarchie (Konsolidierung nutzt Sales-Flash-Ist) ──
+  if (hatFlash) {
+    const konso = await dashboard.konsolidierung(2026, adminAktor);
+    check('K1: Konsolidierung istQuelle = SALES_FLASH', konso.istQuelle === 'SALES_FLASH');
+    check('K1: offizielle Ist-Summe = Sales-Flash-Total 7.667.781', Math.abs(konso.gesamt.istYtd - 7667781) < 1);
+    const ep = konso.zeilen.find((z) => z.regionCode === 'EP');
+    check('K1: EP-Ist = 1.379.298 (Quelle SALES_FLASH)', ep?.istYtd === 1379298 && ep?.istQuelle === 'SALES_FLASH');
+
+    // ── K2: Monats-Status-Board ──
+    await prisma.periodenAbschluss.deleteMany({ where: { jahr: 2026, monat: 5 } });
+    const board = await periodeSvc.uebersicht(2026);
+    const mai = board.monate.find((m) => m.monat === 5)!;
+    check('K2: Mai hat alle 3 Quellen (GL+SalesFlash+Absatz)', mai.gl.vorhanden && mai.salesFlash.actualsErfasst && mai.absatz.vorhanden);
+    check('K2: Mai-Ampel gelb (vollständig, nicht freigegeben)', mai.ampel === 'gelb');
+    await periodeSvc.abschliessen(2026, 5, 'Verify-Abschluss', adminAktor);
+    const board2 = await periodeSvc.uebersicht(2026);
+    check('K2: nach Abschluss Mai-Ampel grün', board2.monate.find((m) => m.monat === 5)!.ampel === 'gruen');
+
+    // ── K3: Cross-Source-Abgleich (EUR/Units/ASP/Budget) ──
+    const det = await periodeSvc.detail(2026, 5);
+    const epD = det.zeilen.find((z) => z.regionCode === 'EP')!;
+    check('K3: EP Sales-Flash-Ist=1.379.298, Delta zu GL berechnet', epD.salesFlashIst === 1379298 && epD.deltaEur !== null);
+    check('K3: Gesamt-Delta GL<->offiziell (~ +179.970)', Math.abs((det.gesamt.deltaEur ?? 0) - (7667781 - det.gesamt.glIst)) < 1);
+    const mitUnits = det.zeilen.find((z) => z.units && z.units > 0);
+    check('K3: ASP wird berechnet, wo Units zugeordnet', !!mitUnits && mitUnits.aspEur !== null);
+    console.log(`  Detail Mai: GL ${det.gesamt.glIst} | offiziell ${det.gesamt.offiziellIst} | Units ${det.gesamt.units} | Budget ${det.gesamt.budget}`);
+
+    await prisma.periodenAbschluss.deleteMany({ where: { jahr: 2026, monat: 5 } });
   }
 
   // ── Cleanup temporärer Verify-Daten ──

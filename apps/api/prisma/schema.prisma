@@ -606,6 +606,22 @@ model AgmStatement {
   @@map("agm_statement")
 }
 
+// ─────────────── PERIODENABSCHLUSS (Monats-Status: Quellen vollständig + abgeglichen + freigegeben) ───────────────
+model PeriodenAbschluss {
+  id               String    @id @default(uuid())
+  jahr             Int
+  monat            Int
+  abgeschlossen    Boolean   @default(false)
+  abgeschlossenVon String?
+  abgeschlossenAm  DateTime?
+  notiz            String?
+  erstelltAm       DateTime  @default(now())
+  aktualisiertAm   DateTime  @updatedAt
+
+  @@unique([jahr, monat])
+  @@map("perioden_abschluss")
+}
+
 // ─────────────── SALES-FLASH-BELEG + RECONCILIATION (Controlling-PDF je Monat) ───────────────
 model SalesFlashDokument {
   id               String   @id @default(uuid())

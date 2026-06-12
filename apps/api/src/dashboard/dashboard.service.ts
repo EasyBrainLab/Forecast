@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { formatPeriode, type MonatswerteRest } from '@forecast/shared';
+import { EINSTELLUNG_KEYS, formatPeriode, type MonatswerteRest } from '@forecast/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ScopeService } from '../scope/scope.service';
@@ -23,6 +23,42 @@ export class DashboardService {
     await this.prisma.istUmsatz.update({ where: { recid }, data: { istSondereffekt, sondereffektGrund: grund } });
     await this.audit.write({ entitaet: 'IstUmsatz', entitaetId: recid, aktion: 'UPDATE', userId: aktor.id, userEmail: aktor.email, nachherWert: { istSondereffekt, grund } });
     return { recid, istSondereffekt };
+  }
+
+  /** Maßgebliche Ist-Quelle + Abgleich-Toleranz aus den Einstellungen (Default: Sales Flash, 2 %). */
+  async istEinstellungen(): Promise<{ quelle: 'SALES_FLASH' | 'GL'; toleranz: number }> {
+    const [q, t] = await Promise.all([
+      this.prisma.einstellung.findUnique({ where: { key: EINSTELLUNG_KEYS.IST_QUELLE } }),
+      this.prisma.einstellung.findUnique({ where: { key: EINSTELLUNG_KEYS.ABGLEICH_TOLERANZ_PROZENT } }),
+    ]);
+    return { quelle: q?.value === 'GL' ? 'GL' : 'SALES_FLASH', toleranz: Number(t?.value ?? 2) };
+  }
+
+  /** Verifiziertes Sales-Flash-Ist je Region aus dem jüngsten Beleg des Jahres (scoped). Leer, wenn kein Beleg/Actuals. */
+  async salesFlashIstProRegion(jahr: number, regionCodes: string[] | null): Promise<Map<string, number>> {
+    const sf = await this.prisma.salesFlashDokument.findFirst({ where: { jahr }, orderBy: { monat: 'desc' } });
+    const out = new Map<string, number>();
+    if (!sf) return out;
+    const actuals = sf.actuals as unknown as { total?: number | null; regionen?: { regionCode: string; eur: number }[] };
+    for (const r of actuals?.regionen ?? []) {
+      if (regionCodes && !regionCodes.includes(r.regionCode)) continue;
+      out.set(r.regionCode, Number(r.eur));
+    }
+    return out;
+  }
+
+  /** Offizielle Ist-EUR je Region: Sales-Flash wo vorhanden, sonst GL (außer im bereinigten Modus -> immer GL). */
+  private async offizielleIst(jahr: number, glIstByRegion: Map<string, number>, scope: Scope, bereinigt: boolean): Promise<{ ist: Map<string, number>; quelleProRegion: Map<string, 'SALES_FLASH' | 'GL'>; quelle: 'SALES_FLASH' | 'GL' }> {
+    const { quelle } = await this.istEinstellungen();
+    const out = new Map(glIstByRegion);
+    const quelleProRegion = new Map<string, 'SALES_FLASH' | 'GL'>([...glIstByRegion.keys()].map((k) => [k, 'GL' as const]));
+    if (quelle !== 'SALES_FLASH' || bereinigt) return { ist: out, quelleProRegion, quelle };
+    const sf = await this.salesFlashIstProRegion(jahr, scope.unbeschraenkt ? null : scope.regionCodes);
+    for (const [code, eur] of sf) {
+      out.set(code, eur);
+      quelleProRegion.set(code, 'SALES_FLASH');
+    }
+    return { ist: out, quelleProRegion, quelle };
   }
 
   private stichtag(jahr: number): { aktJahr: number; aktMonat: number; istGrenze: number } {
@@ -59,6 +95,7 @@ export class DashboardService {
     const budByRegion = new Map(budGrp.map((g) => [g.regionCode, Number(g._sum.wertEur ?? 0)]));
 
     const fcByRegion = await this.forecastRestProRegion(jahr, scope);
+    const { ist: istOffiziell, quelleProRegion, quelle: istQuelle } = await this.offizielleIst(jahr, istByRegion, scope, bereinigt);
 
     const regionen = await this.prisma.region.findMany({
       where: { forecastRelevant: true, ...(scope.unbeschraenkt ? {} : { code: { in: scope.regionCodes.length ? scope.regionCodes : ['__none__'] } }) },
@@ -66,7 +103,7 @@ export class DashboardService {
     });
 
     const zeilen = regionen.map((r) => {
-      const ist = istByRegion.get(r.code) ?? 0;
+      const ist = istOffiziell.get(r.code) ?? 0;
       const fc = fcByRegion.get(r.code) ?? 0;
       const yee = ist + fc;
       const budget = budByRegion.get(r.code) ?? 0;
@@ -74,6 +111,7 @@ export class DashboardService {
         regionCode: r.code,
         bezeichnung: r.bezeichnung,
         istYtd: round2(ist),
+        istQuelle: quelleProRegion.get(r.code) ?? 'GL',
         forecastRest: round2(fc),
         yee: round2(yee),
         budget: round2(budget),
@@ -86,6 +124,7 @@ export class DashboardService {
       jahr,
       stichtag: formatPeriode(aktJahr, aktMonat),
       bereinigt,
+      istQuelle,
       zeilen,
       gesamt: { istYtd: sum('istYtd'), forecastRest: sum('forecastRest'), yee: sum('yee'), budget: sum('budget'), abweichungEur: sum('abweichungEur') },
     };
@@ -196,7 +235,9 @@ export class DashboardService {
       const rc = regByKst.get(g.kostenstelleId);
       if (rc) istByRegion.set(rc, (istByRegion.get(rc) ?? 0) + Number(g._sum.wertEur ?? 0));
     }
-    const umsatzProRegion = [...istByRegion.entries()]
+    // Offizielle Ist-EUR je Region (Sales Flash wo vorhanden, sonst GL)
+    const { ist: istOffiziell, quelle: istQuelle } = await this.offizielleIst(jahr, istByRegion, scope, false);
+    const umsatzProRegion = [...istOffiziell.entries()]
       .filter(([rc]) => forecastRelevant.has(rc))
       .map(([rc, v]) => ({ regionCode: rc, bezeichnung: regBez.get(rc) ?? rc, ist: round2(v) }))
       .sort((a, b) => b.ist - a.ist);
@@ -217,23 +258,26 @@ export class DashboardService {
     const istVsBudgetVsForecast = umsatzProRegion.map((r) => ({
       regionCode: r.regionCode,
       bezeichnung: r.bezeichnung,
-      ist: round2(istByRegion.get(r.regionCode) ?? 0),
+      ist: round2(istOffiziell.get(r.regionCode) ?? 0),
       budget: round2(budByRegion.get(r.regionCode) ?? 0),
       forecast: round2(fcByRegion.get(r.regionCode) ?? 0),
     }));
 
-    const istYtd = Number(istYtdAgg._sum.wertEur ?? 0);
+    // Headline-Ist = offizielle Quelle (Sales Flash) über forecast-relevante Regionen; YoY bleibt GL-konsistent.
+    const istYtd = [...istOffiziell.entries()].filter(([rc]) => forecastRelevant.has(rc)).reduce((s, [, v]) => s + v, 0);
+    const istYtdGL = Number(istYtdAgg._sum.wertEur ?? 0);
     const vorjahrYtd = Number(vorjahrYtdAgg._sum.wertEur ?? 0);
     const budgetGesamt = [...budByRegion.values()].reduce((s, v) => s + v, 0);
     const forecastGesamt = [...fcByRegion.values()].reduce((s, v) => s + v, 0);
     const yee = istYtd + forecastGesamt;
     const abweichungProzent = budgetGesamt === 0 ? null : round2(((yee - budgetGesamt) / Math.abs(budgetGesamt)) * 100);
-    const yoyProzent = vorjahrYtd === 0 ? null : round2(((istYtd - vorjahrYtd) / Math.abs(vorjahrYtd)) * 100);
+    const yoyProzent = vorjahrYtd === 0 ? null : round2(((istYtdGL - vorjahrYtd) / Math.abs(vorjahrYtd)) * 100);
 
     return {
       jahr,
       stichtag: formatPeriode(st.aktJahr, st.aktMonat),
-      kennzahlen: { istYtd: round2(istYtd), budget: round2(budgetGesamt), yee: round2(yee), abweichungProzent, vorjahrYtd: round2(vorjahrYtd), yoyProzent },
+      istQuelle,
+      kennzahlen: { istYtd: round2(istYtd), istYtdGL: round2(istYtdGL), budget: round2(budgetGesamt), yee: round2(yee), abweichungProzent, vorjahrYtd: round2(vorjahrYtd), yoyProzent },
       umsatzProMonat,
       umsatzProRegion,
       umsatzProProduktgruppe,
