@@ -1,6 +1,7 @@
 # Multi-Stage Build für die NestJS-API (pnpm-Monorepo).
 FROM node:22-slim AS base
-RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+# poppler-utils liefert `pdftotext` für das Auslesen der Sales-Flash-PDFs (Reconciliation-Auto-Fill).
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates poppler-utils && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 WORKDIR /app
 

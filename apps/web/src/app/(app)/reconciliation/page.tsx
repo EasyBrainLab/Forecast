@@ -77,7 +77,16 @@ export default function ReconciliationPage() {
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         setUploadPhase('fertig');
-        setUploadMsg('Beleg gespeichert.');
+        try {
+          const r = JSON.parse(xhr.responseText);
+          setUploadMsg(
+            r.autoAusgelesen
+              ? `Beleg gespeichert · ${r.regionenErkannt} Regionen automatisch ausgelesen (Gesamt ${(r.total / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} kEUR).`
+              : 'Beleg gespeichert. Layout nicht automatisch erkannt — bitte Controlling-Actuals manuell eintragen.',
+          );
+        } catch {
+          setUploadMsg('Beleg gespeichert.');
+        }
         qc.invalidateQueries({ queryKey: ['sales-flash-docs'] });
         qc.invalidateQueries({ queryKey: ['recon'] });
       } else {

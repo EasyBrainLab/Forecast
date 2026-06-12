@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import type { RequestUser } from '../common/decorators/current-user.decorator';
+import { parseSalesFlash } from './sales-flash.parser';
 
 const round2 = (x: number): number => Math.round(x * 100) / 100;
 
@@ -28,17 +29,32 @@ export class SalesFlashService {
     return { total: o.total === null || o.total === undefined ? null : Number(o.total), regionen };
   }
 
-  /** PDF-Beleg je Monat ablegen (Voll-Ersatz pro (jahr,monat)). */
+  /** PDF-Beleg je Monat ablegen (Voll-Ersatz pro (jahr,monat)) + Region-Actuals automatisch auslesen. */
   async upload(buffer: Buffer, dateiname: string, mimeType: string, jahr: number, monat: number, aktor: RequestUser) {
     if (!jahr || !monat || monat < 1 || monat > 12) throw new BadRequestException('jahr & monat (1-12) erforderlich.');
-    const vorhanden = await this.prisma.salesFlashDokument.findUnique({ where: { jahr_monat: { jahr, monat } }, select: { id: true, actuals: true, kommentar: true } });
+    const vorhanden = await this.prisma.salesFlashDokument.findUnique({ where: { jahr_monat: { jahr, monat } }, select: { id: true } });
+
+    // Region-Actuals aus dem PDF auslesen (Fallback: manuelle Erfassung, wenn Layout nicht passt)
+    const parsed = mimeType.includes('pdf') ? await parseSalesFlash(buffer) : null;
+    const actualsAusPdf = parsed ? ({ total: parsed.total, regionen: parsed.regionen } as unknown as Prisma.InputJsonValue) : undefined;
+
     const result = await this.prisma.salesFlashDokument.upsert({
       where: { jahr_monat: { jahr, monat } },
-      update: { dateiname, mimeType, groesseBytes: buffer.length, inhalt: buffer, hochgeladenVonId: aktor.id, hochgeladenVon: aktor.email },
-      create: { jahr, monat, dateiname, mimeType, groesseBytes: buffer.length, inhalt: buffer, actuals: {}, hochgeladenVonId: aktor.id, hochgeladenVon: aktor.email },
+      update: { dateiname, mimeType, groesseBytes: buffer.length, inhalt: buffer, hochgeladenVonId: aktor.id, hochgeladenVon: aktor.email, ...(actualsAusPdf ? { actuals: actualsAusPdf } : {}) },
+      create: { jahr, monat, dateiname, mimeType, groesseBytes: buffer.length, inhalt: buffer, actuals: actualsAusPdf ?? {}, hochgeladenVonId: aktor.id, hochgeladenVon: aktor.email },
     });
-    await this.audit.write({ entitaet: 'SalesFlashDokument', entitaetId: result.id, aktion: 'IMPORT', userId: aktor.id, userEmail: aktor.email, metadaten: { jahr, monat, dateiname, groesseBytes: buffer.length, ersetzt: !!vorhanden } });
-    return { id: result.id, jahr, monat, dateiname, groesseBytes: buffer.length, ersetzt: !!vorhanden };
+    await this.audit.write({ entitaet: 'SalesFlashDokument', entitaetId: result.id, aktion: 'IMPORT', userId: aktor.id, userEmail: aktor.email, metadaten: { jahr, monat, dateiname, groesseBytes: buffer.length, ersetzt: !!vorhanden, autoActuals: !!parsed } });
+    return {
+      id: result.id,
+      jahr,
+      monat,
+      dateiname,
+      groesseBytes: buffer.length,
+      ersetzt: !!vorhanden,
+      autoAusgelesen: !!parsed,
+      total: parsed?.total ?? null,
+      regionenErkannt: parsed?.regionen.length ?? 0,
+    };
   }
 
   async list() {

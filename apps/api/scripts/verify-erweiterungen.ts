@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
@@ -89,17 +89,23 @@ async function main(): Promise<void> {
   const offene = await statements.offeneActionItems(adminAktor);
   check('Offene Action-Items für BU sichtbar', offene.some((o) => o.beschreibung === 'Kunde X besuchen'));
 
-  // ── P3: Sales-Flash + Reconciliation ──
-  const pdf = Buffer.from('%PDF-1.4\n% verify dummy\n');
-  await salesFlash.upload(pdf, 'verify_flash.pdf', 'application/pdf', 2026, 5, adminAktor);
+  // ── P3: Sales-Flash + Reconciliation (echtes PDF durch den Auto-Parser) ──
+  const flashPath = join(datenDir, 'docs', 'Sales Flash 2026_05_Total.pdf');
+  const hatFlash = existsSync(flashPath);
+  const pdf = hatFlash ? readFileSync(flashPath) : Buffer.from('%PDF-1.4\n% dummy\n');
+  const flashUp = await salesFlash.upload(pdf, hatFlash ? 'Sales Flash 2026_05_Total.pdf' : 'dummy.pdf', 'application/pdf', 2026, 5, adminAktor);
   const recon0 = await salesFlash.reconciliation(2026, 5);
   check('Reconciliation: Beleg vorhanden, Tool-Ist berechnet', recon0.belegVorhanden && recon0.zeilen.length > 0);
 
-  const istGesamt = recon0.gesamt.toolIst;
-  await salesFlash.setActuals(2026, 5, { total: Math.round(istGesamt * 1.024), regionen: [] }, 'Verify: breitere Abgrenzung', adminAktor);
-  const recon1 = await salesFlash.reconciliation(2026, 5);
-  check('Reconciliation: Delta berechnet nach Actuals-Erfassung', recon1.gesamt.deltaEur !== null && Math.abs((recon1.gesamt.deltaEur ?? 0) - (recon1.gesamt.controllingActual! - recon1.gesamt.toolIst)) < 1);
-  console.log(`  Tool-Ist ${recon1.gesamt.toolIst} | Controlling ${recon1.gesamt.controllingActual} | Delta ${recon1.gesamt.deltaEur} (${recon1.gesamt.deltaProzent}%)`);
+  if (hatFlash) {
+    check('Sales-Flash auto-ausgelesen (Total 7.667.781, 5 Regionen)', flashUp.autoAusgelesen && flashUp.total === 7667781 && flashUp.regionenErkannt === 5);
+    check('Auto-Fill: EP-Actual = 1.379.298', recon0.zeilen.find((z) => z.regionCode === 'EP')?.controllingActual === 1379298);
+    check('Auto-Fill: CS(Radiotherapy)-Actual = 2.182.627', recon0.zeilen.find((z) => z.regionCode === 'CS')?.controllingActual === 2182627);
+    check('Reconciliation-Delta gesamt ~ +179.817', Math.abs((recon0.gesamt.deltaEur ?? 0) - (7667781 - recon0.gesamt.toolIst)) < 1);
+    console.log(`  Tool-Ist ${recon0.gesamt.toolIst} | Controlling ${recon0.gesamt.controllingActual} | Delta ${recon0.gesamt.deltaEur} (${recon0.gesamt.deltaProzent}%)`);
+  } else {
+    console.log('  (Sales-Flash-PDF nicht vorhanden — Auto-Parser-Test übersprungen)');
+  }
 
   // ── Cleanup temporärer Verify-Daten ──
   await prisma.agmStatement.deleteMany({ where: { periode: per, regionCode: region.code } });
