@@ -141,6 +141,25 @@ async function main(): Promise<void> {
     await prisma.periodenAbschluss.deleteMany({ where: { jahr: 2026, monat: 5 } });
   }
 
+  // ── Fix-Regressionen: #5 Absatz-Abbruch bei 0 validen Zeilen, #4 Re-Upload erhält manuelle Actuals ──
+  const cntVor = await prisma.absatz.count({ where: { jahr: 2026, bisMonat: 5 } });
+  let absatzAbort = false;
+  try {
+    await absImport.importiere(Buffer.from('Foo,Bar\n1,2\n'), 'SF_01_05_2026_kaputt.csv', periode, adminAktor);
+  } catch {
+    absatzAbort = true;
+  }
+  const cntNach = await prisma.absatz.count({ where: { jahr: 2026, bisMonat: 5 } });
+  check('#5 Absatz-Import bricht bei 0 validen Zeilen ab, Periode bleibt erhalten', absatzAbort && cntVor > 0 && cntNach === cntVor);
+
+  if (hatFlash) {
+    await salesFlash.setActuals(2026, 5, { total: 9999999, regionen: [] }, 'manuell korrigiert', adminAktor);
+    const reUp = await salesFlash.upload(pdf, 'Sales Flash 2026_05_Total.pdf', 'application/pdf', 2026, 5, adminAktor);
+    check('#4 Re-Upload überschreibt manuelle Actuals NICHT', reUp.manuelleActualsBeibehalten === true && reUp.autoAusgelesen === false);
+    const reconM = await salesFlash.reconciliation(2026, 5);
+    check('#4 Reconciliation nutzt manuellen Total (9.999.999)', reconM.gesamt.controllingActual === 9999999);
+  }
+
   // ── Cleanup temporärer Verify-Daten ──
   await prisma.agmStatement.deleteMany({ where: { periode: per, regionCode: region.code } });
   await prisma.regionsVerantwortung.deleteMany({ where: { userId: agm.id } });

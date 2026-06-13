@@ -8,7 +8,6 @@ import type { Scope } from '../scope/scope.types';
 import type { RequestUser } from '../common/decorators/current-user.decorator';
 
 const round2 = (x: number): number => Math.round(x * 100) / 100;
-const sumMw = (mw: MonatswerteRest): number => Object.values(mw).reduce((s, x) => s + (x?.eur ?? 0), 0);
 
 @Injectable()
 export class DashboardService {
@@ -34,12 +33,22 @@ export class DashboardService {
     return { quelle: q?.value === 'GL' ? 'GL' : 'SALES_FLASH', toleranz: Number(t?.value ?? 2) };
   }
 
-  /** Verifiziertes Sales-Flash-Ist je Region aus dem jüngsten Beleg des Jahres (scoped). Leer, wenn kein Beleg/Actuals. */
-  async salesFlashIstProRegion(jahr: number, regionCodes: string[] | null): Promise<Map<string, number>> {
-    const sf = await this.prisma.salesFlashDokument.findFirst({ where: { jahr }, orderBy: { monat: 'desc' } });
+  /**
+   * Verifiziertes Sales-Flash-Ist je Region (scoped). Wählt den jüngsten Beleg mit Monat <= zielMonat UND
+   * nicht-leeren Actuals, damit der kumulierte SF-Zeitraum (Jan..Belegmonat) nicht über die GL-Ist-Periode
+   * (Jan..zielMonat) hinausläuft und ein unparsbarer jüngerer Beleg keinen erfassten älteren verdeckt.
+   * Leere Map, wenn kein passender Beleg -> Fallback auf GL.
+   */
+  async salesFlashIstProRegion(jahr: number, regionCodes: string[] | null, zielMonat: number): Promise<Map<string, number>> {
     const out = new Map<string, number>();
-    if (!sf) return out;
-    const actuals = sf.actuals as unknown as { total?: number | null; regionen?: { regionCode: string; eur: number }[] };
+    if (zielMonat < 1) return out;
+    const docs = await this.prisma.salesFlashDokument.findMany({ where: { jahr, monat: { lte: zielMonat } }, orderBy: { monat: 'desc' }, select: { actuals: true } });
+    const passend = docs.find((d) => {
+      const a = d.actuals as unknown as { regionen?: { regionCode: string; eur: number }[] };
+      return (a?.regionen?.length ?? 0) > 0;
+    });
+    if (!passend) return out;
+    const actuals = passend.actuals as unknown as { regionen?: { regionCode: string; eur: number }[] };
     for (const r of actuals?.regionen ?? []) {
       if (regionCodes && !regionCodes.includes(r.regionCode)) continue;
       out.set(r.regionCode, Number(r.eur));
@@ -47,13 +56,18 @@ export class DashboardService {
     return out;
   }
 
+  /** zielMonat (letzter Ist-Monat) aus der Ist-Grenze: laufendes Jahr -> istGrenze-1, Vorjahr -> 12, Zukunft -> 0. */
+  private zielMonat(istGrenze: number): number {
+    return istGrenze >= 13 ? 12 : istGrenze - 1;
+  }
+
   /** Offizielle Ist-EUR je Region: Sales-Flash wo vorhanden, sonst GL (außer im bereinigten Modus -> immer GL). */
-  private async offizielleIst(jahr: number, glIstByRegion: Map<string, number>, scope: Scope, bereinigt: boolean): Promise<{ ist: Map<string, number>; quelleProRegion: Map<string, 'SALES_FLASH' | 'GL'>; quelle: 'SALES_FLASH' | 'GL' }> {
+  private async offizielleIst(jahr: number, glIstByRegion: Map<string, number>, scope: Scope, bereinigt: boolean, istGrenze: number): Promise<{ ist: Map<string, number>; quelleProRegion: Map<string, 'SALES_FLASH' | 'GL'>; quelle: 'SALES_FLASH' | 'GL' }> {
     const { quelle } = await this.istEinstellungen();
     const out = new Map(glIstByRegion);
     const quelleProRegion = new Map<string, 'SALES_FLASH' | 'GL'>([...glIstByRegion.keys()].map((k) => [k, 'GL' as const]));
     if (quelle !== 'SALES_FLASH' || bereinigt) return { ist: out, quelleProRegion, quelle };
-    const sf = await this.salesFlashIstProRegion(jahr, scope.unbeschraenkt ? null : scope.regionCodes);
+    const sf = await this.salesFlashIstProRegion(jahr, scope.unbeschraenkt ? null : scope.regionCodes, this.zielMonat(istGrenze));
     for (const [code, eur] of sf) {
       out.set(code, eur);
       quelleProRegion.set(code, 'SALES_FLASH');
@@ -94,8 +108,8 @@ export class DashboardService {
     const budGrp = await this.prisma.budget.groupBy({ by: ['regionCode'], where: budWhere, _sum: { wertEur: true } });
     const budByRegion = new Map(budGrp.map((g) => [g.regionCode, Number(g._sum.wertEur ?? 0)]));
 
-    const fcByRegion = await this.forecastRestProRegion(jahr, scope);
-    const { ist: istOffiziell, quelleProRegion, quelle: istQuelle } = await this.offizielleIst(jahr, istByRegion, scope, bereinigt);
+    const fcByRegion = await this.forecastRestProRegion(jahr, scope, istGrenze);
+    const { ist: istOffiziell, quelleProRegion, quelle: istQuelle } = await this.offizielleIst(jahr, istByRegion, scope, bereinigt, istGrenze);
 
     const regionen = await this.prisma.region.findMany({
       where: { forecastRelevant: true, ...(scope.unbeschraenkt ? {} : { code: { in: scope.regionCodes.length ? scope.regionCodes : ['__none__'] } }) },
@@ -130,7 +144,15 @@ export class DashboardService {
     };
   }
 
-  private async forecastRestProRegion(jahr: number, scope: Scope): Promise<Map<string, number>> {
+  /** Summiert nur die monatswerteRest-Einträge, die am Stichtag noch Forecast sind (Monat >= istGrenze) — verhindert Überlappung mit dem Ist-YTD. */
+  private summeForecastAbGrenze(mw: MonatswerteRest, istGrenze: number): number {
+    return Object.entries(mw).reduce((s, [periode, val]) => {
+      const m = Number(periode.slice(5, 7));
+      return m >= istGrenze ? s + (val?.eur ?? 0) : s;
+    }, 0);
+  }
+
+  private async forecastRestProRegion(jahr: number, scope: Scope, istGrenze: number): Promise<Map<string, number>> {
     const where: Prisma.ForecastVersionWhereInput = { jahr };
     if (!scope.unbeschraenkt) where.regionCode = { in: scope.regionCodes.length ? scope.regionCodes : ['__none__'] };
     const versionen = await this.prisma.forecastVersion.findMany({ where, orderBy: { version: 'desc' } });
@@ -151,7 +173,7 @@ export class DashboardService {
         const k = `${v.landId}|${v.e1Id}`;
         if (seen.has(k)) continue;
         seen.add(k);
-        summe += sumMw(v.monatswerteRest as unknown as MonatswerteRest);
+        summe += this.summeForecastAbGrenze(v.monatswerteRest as unknown as MonatswerteRest, istGrenze);
       }
       proRegion.set(region, summe);
     }
@@ -206,6 +228,9 @@ export class DashboardService {
     const landName = new Map(laender.map((l) => [l.isoCode, l.nameDe]));
     const regBez = new Map(regionen.map((r) => [r.code, r.bezeichnung]));
     const forecastRelevant = new Set(regionen.map((r) => r.code));
+    // Für den YoY-/Headline-GL-Vergleich nur forecast-relevante Kostenstellen (ohne ZENTRAL) — konsistent zur SF-Headline.
+    const frKstIds = ksts.filter((k) => forecastRelevant.has(k.regionCode) && (scope.unbeschraenkt || scope.kostenstelleIds.includes(k.id))).map((k) => k.id);
+    const frFilter: Prisma.IstUmsatzWhereInput = { kostenstelleId: { in: frKstIds.length ? frKstIds : ['__none__'] } };
 
     const budScope: Prisma.BudgetWhereInput = scope.unbeschraenkt ? {} : { regionCode: { in: scope.regionCodes.length ? scope.regionCodes : ['__none__'] } };
     const [monGrp, monGrpVor, istKstGrp, e1Grp, landGrp, istYtdAgg, vorjahrYtdAgg, budMonGrp] = await Promise.all([
@@ -214,8 +239,8 @@ export class DashboardService {
       this.prisma.istUmsatz.groupBy({ by: ['kostenstelleId'], where: { jahr, ...kstFilter }, _sum: { wertEur: true } }),
       this.prisma.istUmsatz.groupBy({ by: ['e1Id'], where: { jahr, ...kstFilter }, _sum: { wertEur: true } }),
       this.prisma.istUmsatz.groupBy({ by: ['landId'], where: { jahr, ...kstFilter }, _sum: { wertEur: true } }),
-      this.prisma.istUmsatz.aggregate({ where: { jahr, monat: { lt: st.istGrenze }, ...kstFilter }, _sum: { wertEur: true } }),
-      this.prisma.istUmsatz.aggregate({ where: { jahr: jahr - 1, monat: { lt: st.istGrenze }, ...kstFilter }, _sum: { wertEur: true } }),
+      this.prisma.istUmsatz.aggregate({ where: { jahr, monat: { lt: st.istGrenze }, ...frFilter }, _sum: { wertEur: true } }),
+      this.prisma.istUmsatz.aggregate({ where: { jahr: jahr - 1, monat: { lt: st.istGrenze }, ...frFilter }, _sum: { wertEur: true } }),
       this.prisma.budget.groupBy({ by: ['monat'], where: { jahr, status: 'AKTIV', monat: { not: null }, ...budScope }, _sum: { wertEur: true } }),
     ]);
 
@@ -236,7 +261,7 @@ export class DashboardService {
       if (rc) istByRegion.set(rc, (istByRegion.get(rc) ?? 0) + Number(g._sum.wertEur ?? 0));
     }
     // Offizielle Ist-EUR je Region (Sales Flash wo vorhanden, sonst GL)
-    const { ist: istOffiziell, quelle: istQuelle } = await this.offizielleIst(jahr, istByRegion, scope, false);
+    const { ist: istOffiziell, quelle: istQuelle } = await this.offizielleIst(jahr, istByRegion, scope, false, st.istGrenze);
     const umsatzProRegion = [...istOffiziell.entries()]
       .filter(([rc]) => forecastRelevant.has(rc))
       .map(([rc, v]) => ({ regionCode: rc, bezeichnung: regBez.get(rc) ?? rc, ist: round2(v) }))
@@ -253,7 +278,7 @@ export class DashboardService {
     const budWhere: Prisma.BudgetWhereInput = { jahr, status: 'AKTIV', ...(scope.unbeschraenkt ? {} : { regionCode: { in: scope.regionCodes.length ? scope.regionCodes : ['__none__'] } }) };
     const budGrp = await this.prisma.budget.groupBy({ by: ['regionCode'], where: budWhere, _sum: { wertEur: true } });
     const budByRegion = new Map(budGrp.map((g) => [g.regionCode, Number(g._sum.wertEur ?? 0)]));
-    const fcByRegion = await this.forecastRestProRegion(jahr, scope);
+    const fcByRegion = await this.forecastRestProRegion(jahr, scope, st.istGrenze);
 
     const istVsBudgetVsForecast = umsatzProRegion.map((r) => ({
       regionCode: r.regionCode,

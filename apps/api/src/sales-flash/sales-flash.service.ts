@@ -32,18 +32,22 @@ export class SalesFlashService {
   /** PDF-Beleg je Monat ablegen (Voll-Ersatz pro (jahr,monat)) + Region-Actuals automatisch auslesen. */
   async upload(buffer: Buffer, dateiname: string, mimeType: string, jahr: number, monat: number, aktor: RequestUser) {
     if (!jahr || !monat || monat < 1 || monat > 12) throw new BadRequestException('jahr & monat (1-12) erforderlich.');
-    const vorhanden = await this.prisma.salesFlashDokument.findUnique({ where: { jahr_monat: { jahr, monat } }, select: { id: true } });
+    const vorhanden = await this.prisma.salesFlashDokument.findUnique({ where: { jahr_monat: { jahr, monat } }, select: { id: true, actuals: true } });
 
     // Region-Actuals aus dem PDF auslesen (Fallback: manuelle Erfassung, wenn Layout nicht passt)
     const parsed = mimeType.includes('pdf') ? await parseSalesFlash(buffer) : null;
     const actualsAusPdf = parsed ? ({ total: parsed.total, regionen: parsed.regionen } as unknown as Prisma.InputJsonValue) : undefined;
+    // Bereits (ggf. manuell) erfasste Actuals beim Re-Upload NICHT durch den Parser überschreiben.
+    const bestehend = vorhanden ? this.cleanActuals(vorhanden.actuals) : null;
+    const bestehendErfasst = !!bestehend && (bestehend.total !== null || bestehend.regionen.length > 0);
+    const autoUebernommen = !!actualsAusPdf && !bestehendErfasst;
 
     const result = await this.prisma.salesFlashDokument.upsert({
       where: { jahr_monat: { jahr, monat } },
-      update: { dateiname, mimeType, groesseBytes: buffer.length, inhalt: buffer, hochgeladenVonId: aktor.id, hochgeladenVon: aktor.email, ...(actualsAusPdf ? { actuals: actualsAusPdf } : {}) },
+      update: { dateiname, mimeType, groesseBytes: buffer.length, inhalt: buffer, hochgeladenVonId: aktor.id, hochgeladenVon: aktor.email, ...(autoUebernommen ? { actuals: actualsAusPdf } : {}) },
       create: { jahr, monat, dateiname, mimeType, groesseBytes: buffer.length, inhalt: buffer, actuals: actualsAusPdf ?? {}, hochgeladenVonId: aktor.id, hochgeladenVon: aktor.email },
     });
-    await this.audit.write({ entitaet: 'SalesFlashDokument', entitaetId: result.id, aktion: 'IMPORT', userId: aktor.id, userEmail: aktor.email, metadaten: { jahr, monat, dateiname, groesseBytes: buffer.length, ersetzt: !!vorhanden, autoActuals: !!parsed } });
+    await this.audit.write({ entitaet: 'SalesFlashDokument', entitaetId: result.id, aktion: 'IMPORT', userId: aktor.id, userEmail: aktor.email, metadaten: { jahr, monat, dateiname, groesseBytes: buffer.length, ersetzt: !!vorhanden, autoActuals: autoUebernommen, manuelleBeibehalten: bestehendErfasst } });
     return {
       id: result.id,
       jahr,
@@ -51,9 +55,10 @@ export class SalesFlashService {
       dateiname,
       groesseBytes: buffer.length,
       ersetzt: !!vorhanden,
-      autoAusgelesen: !!parsed,
-      total: parsed?.total ?? null,
-      regionenErkannt: parsed?.regionen.length ?? 0,
+      autoAusgelesen: autoUebernommen,
+      manuelleActualsBeibehalten: bestehendErfasst,
+      total: autoUebernommen ? (parsed?.total ?? null) : (bestehend?.total ?? null),
+      regionenErkannt: autoUebernommen ? (parsed?.regionen.length ?? 0) : (bestehend?.regionen.length ?? 0),
     };
   }
 
@@ -115,9 +120,11 @@ export class SalesFlashService {
         deltaProzent: delta === null || toolIst === 0 ? null : round2((delta / Math.abs(toolIst)) * 100),
       };
     });
-    // Nur forecast-relevante Regionen summieren (ZENTRAL ist nicht Teil des Sales-Flash-Totals) -> sauberer Abgleich
+    // Nur forecast-relevante Regionen summieren (ZENTRAL ist nicht Teil des Sales-Flash-Totals) -> sauberer Abgleich.
+    // Der Fallback (kein actuals.total) summiert NUR die in den Zeilen gezeigten forecast-relevanten Actuals — konsistent zu toolIstGesamt.
     const toolIstGesamt = zeilen.reduce((s, z) => s + z.toolIst, 0);
-    const controllingGesamt = actuals.total ?? (actuals.regionen.length ? actuals.regionen.reduce((s, r) => s + r.eur, 0) : null);
+    const hatRegionActuals = zeilen.some((z) => z.controllingActual !== null);
+    const controllingGesamt = actuals.total ?? (hatRegionActuals ? zeilen.reduce((s, z) => s + (z.controllingActual ?? 0), 0) : null);
     const deltaGesamt = controllingGesamt === null ? null : controllingGesamt - toolIstGesamt;
 
     return {

@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -126,23 +126,25 @@ export class AgmStatementService {
     if (vorhanden && vorhanden.status === 'EINGEREICHT') throw new ForbiddenException('Statement ist bereits eingereicht und gesperrt.');
 
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: aktor.id }, select: { name: true } });
-    const data = {
-      abweichungGrund: this.cleanGrund(input.abweichungGrund),
-      abweichungKommentar: input.abweichungKommentar ?? null,
-      risiken: input.risiken ?? null,
-      chancen: input.chancen ?? null,
-      pipeline: input.pipeline ?? null,
-      kundenGewonnen: input.kundenGewonnen ?? null,
-      kundenVerloren: input.kundenVerloren ?? null,
-      preisWettbewerb: input.preisWettbewerb ?? null,
-      forecastRealistisch: input.forecastRealistisch ?? true,
-      forecastKommentar: input.forecastKommentar ?? null,
-      actionItems: this.sanitizeActionItems(input.actionItems) as unknown as Prisma.InputJsonValue,
-    };
+    // Whitelist-PATCH: nur tatsächlich übergebene Felder schreiben — ein Teil-Body setzt NICHT gesendete Felder
+    // nicht mehr still auf null/Default (verhindert Datenverlust, z.B. der Action-Items).
+    const gesetzt: Record<string, unknown> = {};
+    if (input.abweichungGrund !== undefined) gesetzt.abweichungGrund = this.cleanGrund(input.abweichungGrund);
+    if (input.abweichungKommentar !== undefined) gesetzt.abweichungKommentar = input.abweichungKommentar;
+    if (input.risiken !== undefined) gesetzt.risiken = input.risiken;
+    if (input.chancen !== undefined) gesetzt.chancen = input.chancen;
+    if (input.pipeline !== undefined) gesetzt.pipeline = input.pipeline;
+    if (input.kundenGewonnen !== undefined) gesetzt.kundenGewonnen = input.kundenGewonnen;
+    if (input.kundenVerloren !== undefined) gesetzt.kundenVerloren = input.kundenVerloren;
+    if (input.preisWettbewerb !== undefined) gesetzt.preisWettbewerb = input.preisWettbewerb;
+    if (input.forecastRealistisch !== undefined) gesetzt.forecastRealistisch = input.forecastRealistisch;
+    if (input.forecastKommentar !== undefined) gesetzt.forecastKommentar = input.forecastKommentar;
+    if (input.actionItems !== undefined) gesetzt.actionItems = this.sanitizeActionItems(input.actionItems) as unknown as Prisma.InputJsonValue;
+
     const result = await this.prisma.agmStatement.upsert({
       where: { periode_regionCode: { periode, regionCode } },
-      update: data,
-      create: { periode, jahr, monat, regionCode, userId: aktor.id, userName: user.name, status: 'ENTWURF', ...data },
+      update: gesetzt as Prisma.AgmStatementUncheckedUpdateInput,
+      create: { periode, jahr, monat, regionCode, userId: aktor.id, userName: user.name, status: 'ENTWURF', ...gesetzt } as Prisma.AgmStatementUncheckedCreateInput,
     });
     await this.audit.write({ entitaet: 'AgmStatement', entitaetId: result.id, aktion: vorhanden ? 'UPDATE' : 'CREATE', userId: aktor.id, userEmail: aktor.email, metadaten: { periode, regionCode } });
     return this.toDto(result);
@@ -162,8 +164,11 @@ export class AgmStatementService {
     if (!vorhanden.forecastRealistisch && !vorhanden.forecastKommentar?.trim()) {
       throw new BadRequestException('Wenn der Forecast als nicht realistisch markiert ist, ist ein Kommentar Pflicht.');
     }
-    const result = await this.prisma.agmStatement.update({ where: { id: vorhanden.id }, data: { status: 'EINGEREICHT', eingereichtAm: new Date() } });
-    await this.audit.write({ entitaet: 'AgmStatement', entitaetId: result.id, aktion: 'STATUS_WECHSEL', userId: aktor.id, userEmail: aktor.email, nachherWert: { status: 'EINGEREICHT' } });
+    // Status-Lock per Bedingung (kein TOCTOU): nur einreichen, wenn noch nicht eingereicht.
+    const upd = await this.prisma.agmStatement.updateMany({ where: { id: vorhanden.id, status: { not: 'EINGEREICHT' } }, data: { status: 'EINGEREICHT', eingereichtAm: new Date() } });
+    if (upd.count === 0) throw new ConflictException('Statement wurde zwischenzeitlich geändert oder bereits eingereicht.');
+    const result = await this.prisma.agmStatement.findUniqueOrThrow({ where: { id: vorhanden.id } });
+    await this.audit.write({ entitaet: 'AgmStatement', entitaetId: result.id, aktion: 'STATUS_WECHSEL', userId: aktor.id, userEmail: aktor.email, vorherWert: { status: vorhanden.status }, nachherWert: { status: 'EINGEREICHT' }, metadaten: { periode, regionCode } });
     return this.toDto(result);
   }
 
@@ -178,7 +183,7 @@ export class AgmStatementService {
       throw new ForbiddenException('Nur AGM (eigene Region) oder Admin.');
     }
     const result = await this.prisma.agmStatement.update({ where: { id: vorhanden.id }, data: { status: 'ENTWURF', eingereichtAm: null } });
-    await this.audit.write({ entitaet: 'AgmStatement', entitaetId: result.id, aktion: 'STATUS_WECHSEL', userId: aktor.id, userEmail: aktor.email, nachherWert: { status: 'ENTWURF' } });
+    await this.audit.write({ entitaet: 'AgmStatement', entitaetId: result.id, aktion: 'STATUS_WECHSEL', userId: aktor.id, userEmail: aktor.email, vorherWert: { status: vorhanden.status }, nachherWert: { status: 'ENTWURF' }, metadaten: { periode, regionCode } });
     return this.toDto(result);
   }
 

@@ -27,8 +27,16 @@ export class PeriodeService {
     const aktJahr = now.getUTCFullYear();
     const aktMonat = now.getUTCMonth() + 1;
 
+    // Nur forecast-relevante Kostenstellen (ohne ZENTRAL) — konsistent zum Sales-Flash-Total und zu reconciliation/detail.
+    const [ksts, frRegionen] = await Promise.all([
+      this.prisma.kostenstelle.findMany({ select: { id: true, regionCode: true } }),
+      this.prisma.region.findMany({ where: { forecastRelevant: true }, select: { code: true } }),
+    ]);
+    const frCodes = new Set(frRegionen.map((r) => r.code));
+    const frKstIds = ksts.filter((k) => frCodes.has(k.regionCode)).map((k) => k.id);
+
     const [glGrp, sfDocs, absGrp, abschluesse] = await Promise.all([
-      this.prisma.istUmsatz.groupBy({ by: ['monat'], where: { jahr }, _sum: { wertEur: true } }),
+      this.prisma.istUmsatz.groupBy({ by: ['monat'], where: { jahr, kostenstelleId: { in: frKstIds } }, _sum: { wertEur: true } }),
       this.prisma.salesFlashDokument.findMany({ where: { jahr }, select: { monat: true, actuals: true } }),
       this.prisma.absatz.groupBy({ by: ['bisMonat'], where: { jahr }, _sum: { seeds: true } }),
       this.prisma.periodenAbschluss.findMany({ where: { jahr } }),
@@ -101,7 +109,7 @@ export class PeriodeService {
     const budByRegion = new Map(budGrp.map((g) => [g.regionCode, Number(g._sum.wertEur ?? 0)]));
     const unitsByRegion = new Map<string, number>();
     for (const g of absGrp) if (g.regionCode) unitsByRegion.set(g.regionCode, Number(g._sum.seeds ?? 0));
-    const sfByRegion = await this.dashboard.salesFlashIstProRegion(jahr, null);
+    const sfByRegion = await this.dashboard.salesFlashIstProRegion(jahr, null, monat);
 
     const zeilen = regionen.map((r) => {
       const gl = glByRegion.get(r.code) ?? 0;

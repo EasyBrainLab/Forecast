@@ -3,7 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsNumber, IsOptional, IsString, MaxLength } from 'class-validator';
-import { ALLE_ROLLEN, Roles } from '../common/decorators/roles.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, type RequestUser } from '../common/decorators/current-user.decorator';
 import { SalesFlashService } from './sales-flash.service';
 
@@ -46,7 +46,8 @@ export class SalesFlashController {
     return this.service.reconciliation(Number(jahr) || new Date().getUTCFullYear(), Number(monat) || 12);
   }
 
-  @Roles(...ALLE_ROLLEN)
+  // Das PDF ist ein regionsübergreifendes Controlling-Gesamtdokument (alle Regionen) -> KEIN AGM-Zugriff (fail-closed).
+  @Roles('VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT')
   @Get(':id/download')
   async download(@Param('id') id: string, @Res() res: Response) {
     const { dateiname, mimeType, inhalt } = await this.service.download(id);

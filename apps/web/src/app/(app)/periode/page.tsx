@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Ampel, Button, Card, keur } from '@/components/ui';
 
@@ -64,18 +64,25 @@ export default function PeriodePage() {
   const darfAbschliessen = user?.rolle === 'BU_LEITER' || user?.rolle === 'ADMIN';
   const [jahr, setJahr] = useState(2026);
   const [sel, setSel] = useState<number | null>(null);
+  const [fehler, setFehler] = useState('');
+  const [busy, setBusy] = useState(false);
 
   const { data: board } = useQuery({ queryKey: ['periode-board', jahr], queryFn: () => api.get<Board>(`/periode/uebersicht?jahr=${jahr}`) });
   const { data: detail } = useQuery({ queryKey: ['periode-detail', jahr, sel], queryFn: () => api.get<Detail>(`/periode/detail?jahr=${jahr}&monat=${sel}`), enabled: sel !== null });
   const { data: einstellungen } = useQuery({ queryKey: ['einstellungen'], queryFn: () => api.get<{ key: string; value: string }[]>('/stammdaten/einstellungen') });
   const istQuelle = einstellungen?.find((e) => e.key === 'IST_QUELLE')?.value ?? 'SALES_FLASH';
   const setIstQuelle = async (value: string) => {
-    await api.patch('/stammdaten/admin/einstellungen/IST_QUELLE', { value });
-    qc.invalidateQueries({ queryKey: ['einstellungen'] });
-    qc.invalidateQueries({ queryKey: ['periode-board'] });
-    qc.invalidateQueries({ queryKey: ['periode-detail'] });
-    qc.invalidateQueries({ queryKey: ['kpi'] });
-    qc.invalidateQueries({ queryKey: ['konsolidierung'] });
+    setFehler('');
+    try {
+      await api.patch('/stammdaten/admin/einstellungen/IST_QUELLE', { value });
+      qc.invalidateQueries({ queryKey: ['einstellungen'] });
+      qc.invalidateQueries({ queryKey: ['periode-board'] });
+      qc.invalidateQueries({ queryKey: ['periode-detail'] });
+      qc.invalidateQueries({ queryKey: ['kpi'] });
+      qc.invalidateQueries({ queryKey: ['konsolidierung'] });
+    } catch (e) {
+      setFehler(e instanceof ApiError ? e.message : 'Umschalten fehlgeschlagen.');
+    }
   };
 
   const reload = () => {
@@ -83,12 +90,28 @@ export default function PeriodePage() {
     qc.invalidateQueries({ queryKey: ['periode-detail'] });
   };
   const abschliessen = async (m: number) => {
-    await api.post(`/periode/${jahr}/${m}/abschliessen`, {});
-    reload();
+    setFehler('');
+    setBusy(true);
+    try {
+      await api.post(`/periode/${jahr}/${m}/abschliessen`, {});
+      reload();
+    } catch (e) {
+      setFehler(e instanceof ApiError ? e.message : 'Freigabe fehlgeschlagen.');
+    } finally {
+      setBusy(false);
+    }
   };
   const wiederOeffnen = async (m: number) => {
-    await api.post(`/periode/${jahr}/${m}/wieder-oeffnen`, {});
-    reload();
+    setFehler('');
+    setBusy(true);
+    try {
+      await api.post(`/periode/${jahr}/${m}/wieder-oeffnen`, {});
+      reload();
+    } catch (e) {
+      setFehler(e instanceof ApiError ? e.message : 'Öffnen fehlgeschlagen.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -121,6 +144,8 @@ export default function PeriodePage() {
           </select>
         </div>
       </div>
+
+      {fehler && <p className="rounded bg-ez-accent/10 p-2 text-sm text-ez-accent">{fehler}</p>}
 
       <Card className="p-0 overflow-hidden">
         <table className="w-full text-sm">
@@ -166,11 +191,11 @@ export default function PeriodePage() {
                 <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                   {darfAbschliessen && !m.zukunft && (
                     m.abgeschlossen ? (
-                      <button className="text-xs text-gray-500 underline" onClick={() => wiederOeffnen(m.monat)}>
+                      <button className="text-xs text-gray-500 underline disabled:opacity-50" disabled={busy} onClick={() => wiederOeffnen(m.monat)}>
                         öffnen
                       </button>
                     ) : (
-                      <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => abschliessen(m.monat)}>
+                      <Button variant="ghost" className="px-2 py-1 text-xs" disabled={busy} onClick={() => abschliessen(m.monat)}>
                         freigeben
                       </Button>
                     )

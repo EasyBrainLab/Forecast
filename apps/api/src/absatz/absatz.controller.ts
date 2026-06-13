@@ -77,6 +77,10 @@ export class AbsatzController {
     if (!periode.jahr || !periode.bisMonat) {
       throw new BadRequestException('Periode nicht erkannt — bitte jahr & bisMonat angeben (oder Dateiname SF_MM_MM_JJJJ).');
     }
+    const maxJahr = new Date().getUTCFullYear() + 1;
+    if (periode.bisMonat < 1 || periode.bisMonat > 12 || periode.jahr < 2020 || periode.jahr > maxJahr) {
+      throw new BadRequestException(`Unplausible Periode (Jahr ${periode.jahr}, bis-Monat ${periode.bisMonat}). Erwartet: Monat 1–12, Jahr 2020–${maxJahr}.`);
+    }
     return this.importService.importiere(file.buffer, file.originalname, periode, { id: aktor.id, email: aktor.email });
   }
 

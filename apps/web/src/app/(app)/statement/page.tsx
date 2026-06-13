@@ -88,9 +88,11 @@ function StatementForm({ periode, rs, bearbeitbar }: { periode: string; rs: Regi
   const eingereicht = rs.status === 'EINGEREICHT';
   const readOnly = !bearbeitbar || eingereicht;
 
+  // Nur bei echtem Wechsel (Region/Periode/Status) zurücksetzen — NICHT bei jedem Refetch,
+  // sonst gehen ungespeicherte Eingaben durch die Query-Invalidierung verloren.
   useEffect(() => {
     setS(rs.statement ?? leer());
-  }, [rs.statement, rs.regionCode]);
+  }, [periode, rs.regionCode, rs.status]);
 
   const upd = (patch: Partial<Statement>) => setS((cur) => ({ ...cur, ...patch }));
   const reload = () => qc.invalidateQueries({ queryKey: ['statement', periode] });

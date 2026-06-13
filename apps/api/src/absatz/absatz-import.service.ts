@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { parse } from 'csv-parse/sync';
 import { createHash } from 'crypto';
@@ -84,6 +84,13 @@ export class AbsatzImportService {
         details: r as unknown as Prisma.InputJsonValue,
         importBatchId: batch.id,
       });
+    }
+
+    // Schutz: niemals eine bestehende Periode löschen, wenn die Datei keine validen Zeilen liefert
+    // (falsche Spalten/leere/kaputte Datei). Sonst würde der Voll-Ersatz die Periode leeren.
+    if (inserts.length === 0) {
+      await this.prisma.importBatch.update({ where: { id: batch.id }, data: { status: 'FEHLGESCHLAGEN', abgeschlossenAm: new Date(), zeilenUebersprungen: uebersprungen } });
+      throw new BadRequestException(`Keine validen Absatzzeilen erkannt (${uebersprungen} übersprungen). Bestehende Daten der Periode ${periode.jahr}-${String(periode.bisMonat).padStart(2, '0')} bleiben unverändert. Bitte Datei/Spalten (Country, Seeds, …) prüfen.`);
     }
 
     // Voll-Ersatz der Periode (Datei ist ein kumulativer Snapshot)

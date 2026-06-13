@@ -24,11 +24,12 @@ function pdfToText(buffer: Buffer): Promise<string> {
   });
 }
 
-/** "1.379.298" -> 1379298 ; "-" -> 0 ; sonst null (nicht numerisch). */
+/** Deutsches Zahlformat: "1.379.298" -> 1379298 ; "1.379.298,50" -> 1379298.5 ; "-" -> 0 ; sonst null. */
 function parseNum(tok: string): number | null {
   if (tok === '-' || tok === '') return 0;
-  const t = tok.replace(/\./g, '').replace(/,/g, '');
-  return /^-?\d+$/.test(t) ? Number(t) : null;
+  const ohnePunkt = tok.replace(/\./g, ''); // Tausenderpunkte entfernen
+  if (/^-?\d+,\d+$/.test(ohnePunkt)) return Number(ohnePunkt.replace(',', '.')); // Dezimalkomma
+  return /^-?\d+$/.test(ohnePunkt) ? Number(ohnePunkt) : null;
 }
 
 /**

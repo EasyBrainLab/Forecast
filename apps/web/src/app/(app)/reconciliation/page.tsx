@@ -39,9 +39,11 @@ interface Recon {
 
 const fmtEur = (v: number | null): string => (v === null ? '—' : keur(v));
 
-async function downloadBeleg(id: string, dateiname: string) {
+async function downloadBeleg(id: string, dateiname: string): Promise<void> {
   const res = await fetch(`${BASE}/sales-flash/${id}/download`, { headers: { Authorization: `Bearer ${getToken()}` } });
-  if (!res.ok) return;
+  if (!res.ok) {
+    throw new Error(res.status === 401 ? 'Sitzung abgelaufen — bitte neu anmelden.' : res.status === 403 ? 'Keine Berechtigung für diesen Beleg.' : `Download fehlgeschlagen (${res.status}).`);
+  }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -52,6 +54,8 @@ async function downloadBeleg(id: string, dateiname: string) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
+
+const parseDe = (v: string): number => Number(v.replace(/\./g, '').replace(',', '.'));
 
 export default function ReconciliationPage() {
   const { user } = useAuth();
@@ -112,6 +116,7 @@ export default function ReconciliationPage() {
   const [total, setTotal] = useState('');
   const [kommentar, setKommentar] = useState('');
   const [actualsMsg, setActualsMsg] = useState('');
+  const [downloadFehler, setDownloadFehler] = useState('');
 
   useEffect(() => {
     if (!recon) return;
@@ -124,20 +129,42 @@ export default function ReconciliationPage() {
 
   const speichernActuals = async () => {
     setActualsMsg('');
-    const regionen = Object.entries(actuals)
-      .filter(([, v]) => v.trim() !== '')
-      .map(([regionCode, v]) => ({ regionCode, eur: Number(v.replace(/\./g, '').replace(',', '.')) }));
+    // Eingaben validieren: ungültige Zahlen NICHT still als 0/null senden (Datenverfälschung vermeiden)
+    const regionen: { regionCode: string; eur: number }[] = [];
+    for (const [regionCode, v] of Object.entries(actuals)) {
+      if (v.trim() === '') continue;
+      const n = parseDe(v);
+      if (!Number.isFinite(n)) {
+        setActualsMsg(`Ungültige Zahl bei Region ${regionCode}: „${v}".`);
+        return;
+      }
+      regionen.push({ regionCode, eur: n });
+    }
+    let totalWert: number | null = null;
+    if (total.trim() !== '') {
+      const t = parseDe(total);
+      if (!Number.isFinite(t)) {
+        setActualsMsg(`Ungültige Zahl im Gesamt-Feld: „${total}".`);
+        return;
+      }
+      totalWert = t;
+    }
     try {
-      await api.put(`/sales-flash/actuals?jahr=${jahr}&monat=${monat}`, {
-        total: total.trim() === '' ? null : Number(total.replace(/\./g, '').replace(',', '.')),
-        regionen,
-        kommentar,
-      });
+      await api.put(`/sales-flash/actuals?jahr=${jahr}&monat=${monat}`, { total: totalWert, regionen, kommentar });
       setActualsMsg('Controlling-Werte gespeichert.');
       qc.invalidateQueries({ queryKey: ['recon'] });
       qc.invalidateQueries({ queryKey: ['sales-flash-docs'] });
     } catch (e) {
       setActualsMsg(e instanceof ApiError ? e.message : 'Fehler.');
+    }
+  };
+
+  const oeffnenBeleg = async (id: string, dateiname: string) => {
+    setDownloadFehler('');
+    try {
+      await downloadBeleg(id, dateiname);
+    } catch (e) {
+      setDownloadFehler(e instanceof Error ? e.message : 'Download fehlgeschlagen.');
     }
   };
 
@@ -260,6 +287,7 @@ export default function ReconciliationPage() {
       {/* Beleg-Liste */}
       <Card>
         <h2 className="mb-3 text-sm font-semibold text-ez-primary">Hinterlegte Belege</h2>
+        {downloadFehler && <p className="mb-2 rounded bg-ez-accent/10 p-2 text-sm text-ez-accent">{downloadFehler}</p>}
         {!docs || docs.length === 0 ? (
           <p className="text-sm text-gray-500">Noch keine Belege hochgeladen.</p>
         ) : (
@@ -285,7 +313,7 @@ export default function ReconciliationPage() {
                   <td className="py-1">{d.actualsErfasst ? '✓' : '—'}</td>
                   <td className="py-1 text-xs text-gray-500">{new Date(d.erstelltAm).toLocaleDateString('de-DE')}</td>
                   <td className="py-1 text-right">
-                    <button className="text-ez-primary underline" onClick={() => downloadBeleg(d.id, d.dateiname)}>
+                    <button className="text-ez-primary underline" onClick={() => oeffnenBeleg(d.id, d.dateiname)}>
                       öffnen
                     </button>
                   </td>
