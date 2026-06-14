@@ -59,7 +59,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           Hinweis: Bitte ändern Sie Ihr Initialpasswort → jetzt ändern
         </Link>
       )}
-      <div className="mx-auto flex max-w-6xl gap-6 p-4">
+      <div className="mx-auto flex max-w-[1700px] gap-6 p-4">
         <nav className="w-52 shrink-0 space-y-1">
           {nav.map((n) => (
             <Link

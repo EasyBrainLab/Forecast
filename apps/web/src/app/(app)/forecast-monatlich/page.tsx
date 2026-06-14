@@ -36,7 +36,8 @@ interface Matrix {
 const MONATS_KURZ = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 const monatNr = (p: string) => Number(p.slice(5));
 const ek = (landId: string, e1Id: string, p: string) => `${landId}|${e1Id}|${p}`;
-const f0 = (v: number) => Math.round(v).toLocaleString('de-DE');
+// Anzeige in kEUR (Tausend EUR), ganzzahlig, mit Tausenderpunkt: 300.500 € -> "301", 1.209.500 € -> "1.210".
+const f0 = (v: number) => Math.round(v / 1000).toLocaleString('de-DE');
 
 export default function ForecastMonatlichPage() {
   const { user } = useAuth();
@@ -59,10 +60,10 @@ export default function ForecastMonatlichPage() {
   const istMonate = useMemo(() => (matrix ? matrix.monate.filter((p) => monatNr(p) < matrix.restAbMonat) : []), [matrix]);
   const fcMonate = useMemo(() => (matrix ? matrix.monate.filter((p) => monatNr(p) >= matrix.restAbMonat) : []), [matrix]);
 
-  // Forecast-Wert (voller EUR) eines offenen Monats unter Berücksichtigung lokaler Edits.
+  // Forecast-Wert (voller EUR) eines offenen Monats unter Berücksichtigung lokaler Edits (Edits sind in kEUR erfasst).
   const fcEur = (z: Zelle, p: string): number => {
     const key = ek(z.landId, z.e1Id, p);
-    if (edits[key] !== undefined) return edits[key];
+    if (edits[key] !== undefined) return edits[key] * 1000;
     return z.monatswerteRest[p]?.eur ?? z.budgetMonate[p] ?? 0;
   };
   const verletzt = (z: Zelle, p: string): boolean => {
@@ -179,7 +180,7 @@ export default function ForecastMonatlichPage() {
       <h1 className="text-2xl font-bold text-ez-primary">Forecast — Monatssicht (Produktgruppe / Land)</h1>
       <p className="text-sm text-gray-500">
         Abgeschlossene Monate = <b>Actual</b> (realisierte Umsätze), offene Monate = <b>Forecast</b> (aus Budget vorbelegt,
-        überschreibbar). Werte in EUR. Bei Monatsabweichung &gt; {schwelle} % gegenüber Budget ist eine Begründung Pflicht.
+        überschreibbar). Werte in <b>kEUR</b> (Tausend EUR). Bei Monatsabweichung &gt; {schwelle} % gegenüber Budget ist eine Begründung Pflicht.
       </p>
 
       {perioden && perioden.length === 0 && (
@@ -222,7 +223,7 @@ export default function ForecastMonatlichPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="border-collapse whitespace-nowrap text-xs">
+            <table className="w-full border-collapse whitespace-nowrap text-xs tabular-nums">
               <thead>
                 <tr className="text-gray-600">
                   <th className="sticky left-0 z-10 bg-white" colSpan={2} />
@@ -276,8 +277,8 @@ export default function ForecastMonatlichPage() {
                             {editierbar ? (
                               <input
                                 type="number"
-                                className={`w-20 bg-transparent px-1 py-1 text-right focus:outline-none ${rot ? 'font-semibold text-ez-ampelRot' : ''}`}
-                                value={edits[key] !== undefined ? edits[key] : Math.round(f)}
+                                className={`w-14 bg-transparent px-1 py-1 text-right tabular-nums focus:outline-none ${rot ? 'font-semibold text-ez-ampelRot' : ''}`}
+                                value={edits[key] !== undefined ? edits[key] : Math.round(f / 1000)}
                                 onChange={(e) => {
                                   const v = e.target.value;
                                   if (v === '') {

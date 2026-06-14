@@ -199,7 +199,7 @@ export default function DatenPage() {
                   <td className="p-2">{r.produktgruppe}</td>
                   <td className="p-2 text-gray-500">{r.e2}</td>
                   <td className="p-2 text-right">{eur(r.wertEur)}</td>
-                  <td className="p-2 text-right text-gray-500">{r.units ?? '—'}</td>
+                  <td className="p-2 text-right text-gray-500">{r.units === null || r.units === undefined ? '—' : r.units.toLocaleString('de-DE')}</td>
                 </tr>
               ))}
             </tbody>
