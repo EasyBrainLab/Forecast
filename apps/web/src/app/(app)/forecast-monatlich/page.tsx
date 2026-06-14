@@ -124,7 +124,10 @@ export default function ForecastMonatlichPage() {
           }
           return { landId: z.landId, e1Id: z.e1Id, monatswerteRest: mw };
         });
-      const kommentar = Object.values(comments).map((c) => c.trim()).filter(Boolean).join(' | ') || undefined;
+      // Per-Monats-Begründungen liegen in zelle.monatswerteRest[m].kommentar; der Top-Level-Kommentar
+      // (für die Zellen-Schwellwert-Prüfung, MaxLength 2000) ist nur eine kurze Zusammenfassung.
+      const anzBegr = Object.values(comments).filter((c) => c.trim()).length;
+      const kommentar = anzBegr ? `Monatsbegründungen (${anzBegr}) — Details je Monat gespeichert` : undefined;
       return api.post(`/forecast/${aktiv!.periode}/${aktiv!.regionCode}/anpassen`, { kommentar, monatsModus: true, zellen });
     },
     onSuccess: () => {
@@ -275,7 +278,16 @@ export default function ForecastMonatlichPage() {
                                 type="number"
                                 className={`w-20 bg-transparent px-1 py-1 text-right focus:outline-none ${rot ? 'font-semibold text-ez-ampelRot' : ''}`}
                                 value={edits[key] !== undefined ? edits[key] : Math.round(f)}
-                                onChange={(e) => setEdits({ ...edits, [key]: Number(e.target.value) })}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  if (v === '') {
+                                    // Leeres Feld != 0 EUR: Edit verwerfen, Budget-Default bleibt aktiv.
+                                    const { [key]: _drop, ...rest } = edits;
+                                    setEdits(rest);
+                                  } else {
+                                    setEdits({ ...edits, [key]: Number(v) });
+                                  }
+                                }}
                               />
                             ) : (
                               <span className={`px-1 py-1 ${rot ? 'font-semibold text-ez-ampelRot' : ''}`}>{f ? f0(f) : ''}</span>

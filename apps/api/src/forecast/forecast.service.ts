@@ -24,6 +24,20 @@ function summeEur(mw: MonatswerteRest): number {
   return Object.values(mw).reduce((s, x) => s + (x?.eur ?? 0), 0);
 }
 
+/**
+ * Übernimmt eur/units aus `neu`, erhält aber den Per-Monats-Kommentar der Vorversion,
+ * wenn `neu` für den Monat keinen mitliefert (z. B. Edit über die aggregierte /forecast-Seite).
+ * Schützt die auditrelevante Abweichungs-Begründung vor stillem Verlust.
+ */
+function mergeMonatsKommentar(prev: MonatswerteRest, neu: MonatswerteRest): MonatswerteRest {
+  const out: MonatswerteRest = {};
+  for (const [p, w] of Object.entries(neu)) {
+    const komm = w.kommentar?.trim() ? w.kommentar : prev[p]?.kommentar ?? null;
+    out[p] = { eur: w.eur, units: w.units ?? null, ...(komm ? { kommentar: komm } : {}) };
+  }
+  return out;
+}
+
 @Injectable()
 export class ForecastService {
   constructor(
@@ -42,15 +56,20 @@ export class ForecastService {
     return { jahr: y, monat: m, monate };
   }
 
-  private async schwellwert(): Promise<number> {
-    const e = await this.prisma.einstellung.findUnique({ where: { key: EINSTELLUNG_KEYS.SCHWELLWERT_PROZENT } });
-    return Number(e?.value ?? 10);
+  /** Liest eine numerische Einstellung fail-safe: nicht-numerische/fehlende Werte fallen auf den Default zurück. */
+  private async numEinstellung(key: string, def: number): Promise<number> {
+    const e = await this.prisma.einstellung.findUnique({ where: { key } });
+    const n = Number(e?.value);
+    return Number.isFinite(n) ? n : def;
+  }
+
+  private schwellwert(): Promise<number> {
+    return this.numEinstellung(EINSTELLUNG_KEYS.SCHWELLWERT_PROZENT, 10);
   }
 
   /** Schwellwert je Einzelmonat (Forecast vs. Budget des jeweiligen Monats). */
-  private async monatsSchwellwert(): Promise<number> {
-    const e = await this.prisma.einstellung.findUnique({ where: { key: EINSTELLUNG_KEYS.MONATS_SCHWELLWERT_PROZENT } });
-    return Number(e?.value ?? 5);
+  private monatsSchwellwert(): Promise<number> {
+    return this.numEinstellung(EINSTELLUNG_KEYS.MONATS_SCHWELLWERT_PROZENT, 5);
   }
 
   private async assertAgmRead(aktor: RequestUser, regionCode: string): Promise<void> {
@@ -64,7 +83,7 @@ export class ForecastService {
   /** Öffnet eine Periode für eine Region (idempotent) und seedet OFFEN-Versionen aus dem Budget der Restmonate. */
   async oeffnePeriode(periode: string, regionCode: string, aktor: RequestUser): Promise<void> {
     const { jahr, monat, monate } = this.restMonate(periode);
-    const deadlineTag = Number((await this.prisma.einstellung.findUnique({ where: { key: EINSTELLUNG_KEYS.DEADLINE_TAG } }))?.value ?? 10);
+    const deadlineTag = await this.numEinstellung(EINSTELLUNG_KEYS.DEADLINE_TAG, 10);
     const deadline = new Date(Date.UTC(jahr, monat - 1, deadlineTag));
     await this.prisma.forecastPeriode.upsert({
       where: { periode_regionCode: { periode, regionCode } },
@@ -233,6 +252,7 @@ export class ForecastService {
     for (const v of latest) {
       const k = `${v.landId}|${v.e1Id}`;
       const adj = adjust?.get(k);
+      const mwNeu = adj ? mergeMonatsKommentar(v.monatswerteRest as unknown as MonatswerteRest, adj.mw) : v.monatswerteRest;
       await tx.forecastVersion.create({
         data: {
           periode,
@@ -241,7 +261,7 @@ export class ForecastService {
           regionCode,
           landId: v.landId,
           e1Id: v.e1Id,
-          monatswerteRest: (adj?.mw ?? v.monatswerteRest) as Prisma.InputJsonValue,
+          monatswerteRest: mwNeu as Prisma.InputJsonValue,
           status,
           kommentar: kommentar ?? null,
           schwellwertVerletzt: adj?.verletzt ?? false,
@@ -284,7 +304,7 @@ export class ForecastService {
       this.budgetRestProCell(jahr, regionCode, alleMonate),
       this.latestVersionen(this.prisma, periode, regionCode),
       this.prisma.istUmsatz.groupBy({ by: ['landId', 'e1Id'], where: { jahr, monat: { lt: monat }, kostenstelleId: { in: ksts.map((k) => k.id) } }, _sum: { wertEur: true } }),
-      this.prisma.istUmsatz.groupBy({ by: ['landId', 'e1Id', 'monat'], where: { jahr, kostenstelleId: { in: ksts.map((k) => k.id) } }, _sum: { wertEur: true } }),
+      this.prisma.istUmsatz.groupBy({ by: ['landId', 'e1Id', 'monat'], where: { jahr, monat: { lt: monat }, kostenstelleId: { in: ksts.map((k) => k.id) } }, _sum: { wertEur: true } }),
       this.prisma.produktgruppeE1.findMany({ select: { id: true, nameDe: true } }),
       this.prisma.land.findMany({ select: { isoCode: true, nameDe: true } }),
     ]);
