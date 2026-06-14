@@ -1,7 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ForecastStatus, Prisma } from '@prisma/client';
 import {
+  braucheKommentarGegen,
   EINSTELLUNG_KEYS,
   FORECAST_TRANSITIONS,
   formatPeriode,
@@ -44,6 +45,12 @@ export class ForecastService {
   private async schwellwert(): Promise<number> {
     const e = await this.prisma.einstellung.findUnique({ where: { key: EINSTELLUNG_KEYS.SCHWELLWERT_PROZENT } });
     return Number(e?.value ?? 10);
+  }
+
+  /** Schwellwert je Einzelmonat (Forecast vs. Budget des jeweiligen Monats). */
+  private async monatsSchwellwert(): Promise<number> {
+    const e = await this.prisma.einstellung.findUnique({ where: { key: EINSTELLUNG_KEYS.MONATS_SCHWELLWERT_PROZENT } });
+    return Number(e?.value ?? 5);
   }
 
   private async assertAgmRead(aktor: RequestUser, regionCode: string): Promise<void> {
@@ -139,6 +146,26 @@ export class ForecastService {
     const { jahr, monate } = this.restMonate(periode);
     const budgetCells = await this.budgetRestProCell(jahr, regionCode, monate);
     const schwelle = await this.schwellwert();
+    const monatsSchwelle = await this.monatsSchwellwert();
+
+    // Per-Monats-Pflichtkommentar (nur Monatssicht): jeder Monat, dessen Forecast den Monats-Schwellwert
+    // (Default 5 %) gegen das Budget dieses Monats überschreitet, braucht eine Erklärung.
+    const fehlendeMonatsKommentare: string[] = [];
+    if (dto.monatsModus) for (const z of dto.zellen) {
+      const key = `${z.landId}|${z.e1Id}`;
+      const budgetMw = budgetCells.get(key);
+      for (const [m, w] of Object.entries(z.monatswerteRest)) {
+        const budgetMonat = budgetMw?.[m]?.eur ?? 0;
+        if (braucheKommentarGegen(w.eur ?? 0, budgetMonat, monatsSchwelle) && !w.kommentar?.trim()) {
+          fehlendeMonatsKommentare.push(`${z.e1Id}/${z.landId} ${m}`);
+        }
+      }
+    }
+    if (fehlendeMonatsKommentare.length > 0) {
+      throw new BadRequestException(
+        `Pflichtkommentar fehlt für Monate mit Abweichung > ${monatsSchwelle} %: ${fehlendeMonatsKommentare.join(', ')}`,
+      );
+    }
 
     let irgendVerletzt = false;
     const adjust = new Map<string, { mw: MonatswerteRest; verletzt: boolean }>();
@@ -249,18 +276,35 @@ export class ForecastService {
   async matrix(periode: string, regionCode: string, aktor: RequestUser) {
     await this.assertAgmRead(aktor, regionCode);
     const { jahr, monat, monate } = this.restMonate(periode);
+    const alleMonate = Array.from({ length: 12 }, (_, i) => i + 1);
+    const monateKeys = alleMonate.map((m) => formatPeriode(jahr, m));
     const ksts = await this.prisma.kostenstelle.findMany({ where: { regionCode }, select: { id: true } });
-    const [budgetCells, latest, istGrp, e1s, laender] = await Promise.all([
+    const [budgetCells, budgetCellsAlle, latest, istGrp, istMonatsGrp, e1s, laender] = await Promise.all([
       this.budgetRestProCell(jahr, regionCode, monate),
+      this.budgetRestProCell(jahr, regionCode, alleMonate),
       this.latestVersionen(this.prisma, periode, regionCode),
       this.prisma.istUmsatz.groupBy({ by: ['landId', 'e1Id'], where: { jahr, monat: { lt: monat }, kostenstelleId: { in: ksts.map((k) => k.id) } }, _sum: { wertEur: true } }),
+      this.prisma.istUmsatz.groupBy({ by: ['landId', 'e1Id', 'monat'], where: { jahr, kostenstelleId: { in: ksts.map((k) => k.id) } }, _sum: { wertEur: true } }),
       this.prisma.produktgruppeE1.findMany({ select: { id: true, nameDe: true } }),
       this.prisma.land.findMany({ select: { isoCode: true, nameDe: true } }),
     ]);
     const istMap = new Map(istGrp.map((g) => [`${g.landId}|${g.e1Id}`, Number(g._sum.wertEur ?? 0)]));
+    const istMonateMap = new Map<string, Record<string, number>>();
+    for (const g of istMonatsGrp) {
+      const key = `${g.landId}|${g.e1Id}`;
+      const rec = istMonateMap.get(key) ?? {};
+      rec[formatPeriode(jahr, g.monat)] = Number(g._sum.wertEur ?? 0);
+      istMonateMap.set(key, rec);
+    }
+    const eurProMonat = (mw: MonatswerteRest | undefined): Record<string, number> => {
+      const out: Record<string, number> = {};
+      for (const [p, w] of Object.entries(mw ?? {})) out[p] = w?.eur ?? 0;
+      return out;
+    };
     const e1Name = new Map(e1s.map((e) => [e.id, e.nameDe]));
     const landName = new Map(laender.map((l) => [l.isoCode, l.nameDe]));
     const schwelle = await this.schwellwert();
+    const monatsSchwelle = await this.monatsSchwellwert();
 
     const zellen = latest.map((v) => {
       const key = `${v.landId}|${v.e1Id}`;
@@ -283,10 +327,22 @@ export class ForecastService {
         abweichungProzent: abwProzent,
         ampel: abwProzent === null ? 'grau' : Math.abs(abwProzent) > schwelle ? 'rot' : 'gruen',
         monatswerteRest: v.monatswerteRest,
+        budgetMonate: eurProMonat(budgetCellsAlle.get(key)),
+        istMonate: istMonateMap.get(key) ?? {},
       };
     });
     zellen.sort((a, b) => a.e1Name.localeCompare(b.e1Name) || a.landName.localeCompare(b.landName));
     const periodeInfo = await this.ladePeriode(periode, regionCode);
-    return { periode, regionCode, status: periodeInfo.status, deadline: periodeInfo.deadline, schwellwertProzent: schwelle, zellen };
+    return {
+      periode,
+      regionCode,
+      status: periodeInfo.status,
+      deadline: periodeInfo.deadline,
+      schwellwertProzent: schwelle,
+      monatsSchwellwertProzent: monatsSchwelle,
+      monate: monateKeys,
+      restAbMonat: monat,
+      zellen,
+    };
   }
 }

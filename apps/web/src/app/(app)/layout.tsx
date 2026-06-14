@@ -7,6 +7,7 @@ import { useAuth, ROLLEN_LABEL, type Rolle } from '@/lib/auth';
 const NAV: { href: string; label: string; rollen: Rolle[] }[] = [
   { href: '/uebersicht', label: 'Übersicht & KPIs', rollen: ['AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT'] },
   { href: '/forecast', label: 'Forecast / Erfassung', rollen: ['AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN'] },
+  { href: '/forecast-monatlich', label: 'Forecast (Monatssicht)', rollen: ['AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN'] },
   { href: '/statement', label: 'Vertriebs-Statement', rollen: ['AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT'] },
   { href: '/konsolidierung', label: 'Konsolidierung', rollen: ['VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN'] },
   { href: '/absatz', label: 'Absatz / Stückzahlen', rollen: ['AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT'] },
