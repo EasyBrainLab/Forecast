@@ -11,6 +11,8 @@ export interface IstMonatswert {
 export interface MonatswertRest {
   eur: number;
   units?: number | null;
+  /** AGM-Erklärung für diesen Einzelmonat (Pflicht bei Überschreitung des Monats-Schwellwerts). */
+  kommentar?: string | null;
 }
 
 // monatswerteRest: { "JJJJ-MM": { eur, units } }
