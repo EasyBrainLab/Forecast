@@ -21,6 +21,8 @@ import { AbsatzModule } from './absatz/absatz.module';
 import { AgmStatementModule } from './agm-statement/agm-statement.module';
 import { SalesFlashModule } from './sales-flash/sales-flash.module';
 import { PeriodeModule } from './periode/periode.module';
+import { TenderModule } from './tender/tender.module';
+import { CompetitorModule } from './competitor/competitor.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -48,6 +50,8 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
     AgmStatementModule,
     SalesFlashModule,
     PeriodeModule,
+    TenderModule,
+    CompetitorModule,
   ],
   providers: [
     // Reihenfolge = Ausführungsreihenfolge: Throttler -> JwtAuth -> Roles

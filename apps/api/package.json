@@ -24,7 +24,8 @@
     "verify:dashboard": "ts-node --transpile-only scripts/verify-dashboard.ts",
     "verify:export": "ts-node --transpile-only scripts/verify-export.ts",
     "verify:absatz": "ts-node --transpile-only scripts/verify-absatz.ts",
-    "verify:erweiterungen": "ts-node --transpile-only scripts/verify-erweiterungen.ts"
+    "verify:erweiterungen": "ts-node --transpile-only scripts/verify-erweiterungen.ts",
+    "verify:tender": "ts-node --transpile-only scripts/verify-tender.ts"
   },
   "prisma": {
     "seed": "ts-node --transpile-only prisma/seed.ts"

@@ -642,3 +642,68 @@ model SalesFlashDokument {
   @@index([jahr, monat])
   @@map("sales_flash_dokument")
 }
+
+// ─────────────── TENDER / AUSSCHREIBUNGEN (fristen-getrieben; Reminder via Scheduler) ───────────────
+enum TenderStatus {
+  BEOBACHTET
+  EINGEREICHT
+  GEWONNEN
+  VERLOREN
+  STORNIERT
+}
+
+model Tender {
+  id                   String       @id @default(uuid())
+  referenznummer       String
+  krankenhaus          String // Klinik/Standort (customer_site-Entität folgt in späterer Etappe)
+  stadt                String?
+  landIso              String? // informativ (kein FK, minimal-invasiv wie agm_statement)
+  regionCode           String? // Scoping-Brücke (String ohne FK, analog agm_statement.regionCode)
+  veroeffentlichtAm    DateTime?
+  abgabefrist          DateTime
+  status               TenderStatus @default(BEOBACHTET)
+  wettbewerber         String[]     @default([]) // Freitext-Liste (competitor-Stammliste folgt später)
+  eigenerPreisEur      Decimal?     @db.Decimal(15, 2) // Preis pro Einheit eigen
+  wettbewerbPreisEur   Decimal?     @db.Decimal(15, 2) // Preis pro Einheit Wettbewerb (falls bekannt)
+  notiz                String?
+  erstelltVonId        String
+  erstelltVon          String // denormalisiert (E-Mail, Anzeige ohne Join)
+  reminderSchwelleTage Int? // kleinste bereits erinnerte Frist-Schwelle (Reminder-Idempotenz)
+  erstelltAm           DateTime     @default(now())
+  aktualisiertAm       DateTime     @updatedAt
+
+  lose TenderLos[]
+
+  @@index([status])
+  @@index([abgabefrist])
+  @@index([regionCode])
+  @@map("tender")
+}
+
+model TenderLos {
+  id          String   @id @default(uuid())
+  tenderId    String
+  bezeichnung String
+  volumenEur  Decimal? @db.Decimal(15, 2)
+  menge       Decimal? @db.Decimal(15, 2)
+  erstelltAm  DateTime @default(now())
+
+  tender Tender @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+
+  @@index([tenderId])
+  @@map("tender_los")
+}
+
+// ─────────────── WETTBEWERBER-STAMMLISTE (Pflichtauswahl statt Freitext in Tender/Wettbewerbsbeobachtung) ───────────────
+model Competitor {
+  id             String   @id @default(uuid())
+  name           String   @unique
+  aktiv          Boolean  @default(true)
+  notiz          String?
+  sortierung     Int      @default(0)
+  erstelltAm     DateTime @default(now())
+  aktualisiertAm DateTime @updatedAt
+
+  @@index([aktiv])
+  @@map("competitor")
+}

@@ -7,6 +7,7 @@ export * from './domain/parse-decimal-de';
 export * from './domain/yee';
 export * from './domain/abweichung';
 export * from './domain/schwellwert';
+export * from './domain/tender-reminder';
 export * from './domain/mapping/region';
 export * from './domain/mapping/e1';
 export * from './domain/mapping/e2';

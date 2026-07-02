@@ -97,16 +97,23 @@ async function main(): Promise<void> {
     },
   });
 
-  const [regionen, kst, laender, e1, e2, einst] = await Promise.all([
+  // Wettbewerber-Stammliste (Pflichtauswahl statt Freitext) — idempotent, initial 6.
+  const wettbewerber = ['BXTAccelyon', 'Ekrior', 'Bard/Palex', 'Theragenics', 'Elekta', 'Varian'];
+  for (const [i, wname] of wettbewerber.entries()) {
+    await prisma.competitor.upsert({ where: { name: wname }, update: {}, create: { name: wname, sortierung: i } });
+  }
+
+  const [regionen, kst, laender, e1, e2, einst, comp] = await Promise.all([
     prisma.region.count(),
     prisma.kostenstelle.count(),
     prisma.land.count(),
     prisma.produktgruppeE1.count(),
     prisma.produktgruppeE2.count(),
     prisma.einstellung.count(),
+    prisma.competitor.count(),
   ]);
   console.log(
-    `Seed OK — Regionen:${regionen} KST:${kst} Länder:${laender} E1:${e1} E2:${e2} Einstellungen:${einst} Admin:${email}`,
+    `Seed OK — Regionen:${regionen} KST:${kst} Länder:${laender} E1:${e1} E2:${e2} Einstellungen:${einst} Wettbewerber:${comp} Admin:${email}`,
   );
 }
 
