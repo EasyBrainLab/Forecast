@@ -187,10 +187,24 @@ Rundet die Tender-Wettbewerbsangabe ab („aus Stammliste statt Freitext", Auftr
 - **Verifikation:** Typecheck grün · CI-Guards grün · `verify:tender` erweitert (**21 Assertions** inkl.
   Competitor-CRUD + Aktiv-Filter) grün.
 
+### Etappe R3 — Customer-Site (Klinik/Standort) mit Fuzzy-Match (fertig, verifiziert · 2026-07-02)
+- **Datenmodell:** `CustomerSite` (name, stadt, landIso, regionCode, Typ öffentlich/privat/unbekannt, Status
+  neu/aktiv/gefährdet/verloren/zurückgewonnen, `quellNamen[]`) + Enums; Migration `..._customer_site` (additiv).
+- **Fuzzy-Match:** pure Domänenfunktion `findeSiteKandidaten`/`nameAehnlichkeit` (Token-Jaccard über normalisierte
+  Namen) in `@forecast/shared`, 100 % getestet.
+- **Backend:** `apps/api/src/customer-site/` — CRUD + fail-closed Scoping, Whitelist-PATCH, Status-Workflow
+  (AGM nur eigene Region), Audit; **Bestätigungs-Workflow**: `GET /customer-site/vorschlaege` liefert unzugeordnete
+  `Absatz.kunde`-Strings mit Match-Vorschlägen + Region-Vorschlag, `POST /customer-site/zuordnen` bestätigt
+  (neu anlegen ODER bestehendem zuordnen) — **nie automatisch**.
+- **Frontend:** `/admin/customer-site` — Bestätigungsbereich (Vorschläge → neu/zuordnen) + Stammdatentabelle
+  (Status/Typ/Region inline pflegbar) + manuelles Anlegen.
+- **Verifikation:** Typecheck grün · CI-Guards grün · `shared` 100 % (90 Tests) · `verify:customer-site`
+  (**14 Assertions**: CRUD, Scoping, Status-Workflow, Whitelist, Fuzzy-Vorschläge, Zuordnen neu/bestehend/idempotent).
+
 ### Bewusste MVP-Annahmen (revidierbar)
-- **A-R1:** `customer_site` noch nicht als Entität — Tender führt Krankenhaus/Land vorerst als String.
-  `competitor` ist seit R2 eine Entität, aber `Tender.wettbewerber` referenziert sie über den Namen (String[]),
-  nicht per FK; echte M:N-Normalisierung folgt (additiv).
+- **A-R1:** `customer_site` (R3) und `competitor` (R2) sind Entitäten, aber `Tender` referenziert sie noch nicht
+  per FK — `Tender.krankenhaus` bleibt String, `Tender.wettbewerber` String[] (Namen). FK-Verknüpfung von
+  Tender an customer_site/competitor folgt additiv.
 - **A-R2:** Region-Bezug als String ohne FK (konsistent mit `agm_statement.regionCode`) — minimal-invasiv.
 - **A-R3:** **Keine** neue REP-Rolle im MVP; `AGM` ist die berichtende, regions-gescopte Rolle.
 - **A-R4:** `AgmStatement` bleibt unangetastet; Ausbau zum vollen `monthly_report` erst in späterer Etappe.
@@ -198,6 +212,6 @@ Rundet die Tender-Wettbewerbsangabe ab („aus Stammliste statt Freitext", Auftr
   fremde Region wird serverseitig fail-closed abgelehnt (403). UX-Feinschliff später.
 
 ### Nächste Etappen (Vorschlag)
-- **R3:** `customer_site`-Entität + Migration/Fuzzy-Match aus `Absatz.kunde`/`KundeRegion`.
 - **R4:** `AgmStatement` → `monthly_report` ausbauen (report_section_entry, Aktivitäten, Marketing, Projektliste).
+- **R5:** `Tender`/`monthly_report` per FK an `customer_site`/`competitor` verknüpfen (additiv).
 - **Querschnitt:** i18n-Gerüst (next-intl) aktivieren, bevor weitere Seiten entstehen.

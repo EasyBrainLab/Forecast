@@ -707,3 +707,36 @@ model Competitor {
   @@index([aktiv])
   @@map("competitor")
 }
+
+// ─────────────── CUSTOMER SITE (Klinik/Standort — via Fuzzy-Match aus Absatz.kunde, manuelle Bestätigung) ───────────────
+enum CustomerSiteTyp {
+  OEFFENTLICH
+  PRIVAT
+  UNBEKANNT
+}
+
+enum CustomerSiteStatus {
+  NEU
+  AKTIV
+  GEFAEHRDET
+  VERLOREN
+  ZURUECKGEWONNEN
+}
+
+model CustomerSite {
+  id             String             @id @default(uuid())
+  name           String
+  stadt          String?
+  landIso        String?
+  regionCode     String? // Scoping-Brücke (String ohne FK, analog agm_statement/tender)
+  typ            CustomerSiteTyp    @default(UNBEKANNT)
+  status         CustomerSiteStatus @default(NEU)
+  notiz          String?
+  quellNamen     String[]           @default([]) // zugeordnete SOL_DELIVERYADDRESSNAME-Varianten (Matching-Historie)
+  erstelltAm     DateTime           @default(now())
+  aktualisiertAm DateTime           @updatedAt
+
+  @@index([regionCode])
+  @@index([status])
+  @@map("customer_site")
+}

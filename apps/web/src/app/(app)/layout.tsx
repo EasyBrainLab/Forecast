@@ -19,6 +19,7 @@ const NAV: { href: string; label: string; rollen: Rolle[] }[] = [
   { href: '/import', label: 'Import', rollen: ['BU_LEITER', 'ADMIN'] },
   { href: '/admin/kunde-region', label: 'Kunden → Region', rollen: ['ADMIN', 'SUPPORT'] },
   { href: '/admin/competitor', label: 'Wettbewerber', rollen: ['ADMIN', 'SUPPORT'] },
+  { href: '/admin/customer-site', label: 'Standorte / Kliniken', rollen: ['ADMIN', 'SUPPORT'] },
   { href: '/admin/users', label: 'Nutzerverwaltung', rollen: ['ADMIN', 'SUPPORT'] },
 ];
 
