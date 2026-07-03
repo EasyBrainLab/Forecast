@@ -68,4 +68,24 @@ export class KundeRegionService {
     await this.audit.write({ entitaet: 'KundeRegion', entitaetId: k, aktion: 'DELETE', userId: aktor.id, userEmail: aktor.email, metadaten: { kunde: k, zeilenZurueckgesetzt: count } });
     return { kunde: k, zeilenZurueckgesetzt: count };
   }
+
+  /**
+   * Löscht einen (fehlerhaft importierten) Kunden VOLLSTÄNDIG: alle Absatz-Zeilen + die Region-Zuordnung.
+   * Irreversibel — für Datensätze, die nicht in die Liste gehören. Anders als remove() (nur Zuordnung lösen).
+   */
+  async loeschenKunde(kunde: string, aktor: RequestUser) {
+    const k = kunde.trim();
+    if (!k) throw new BadRequestException('Kunde fehlt.');
+    const absatz = await this.prisma.absatz.deleteMany({ where: { kunde: k } });
+    const mapping = await this.prisma.kundeRegion.deleteMany({ where: { kunde: k } });
+    await this.audit.write({
+      entitaet: 'Absatz',
+      entitaetId: k,
+      aktion: 'DELETE',
+      userId: aktor.id,
+      userEmail: aktor.email,
+      metadaten: { kunde: k, absatzZeilenGeloescht: absatz.count, mappingGeloescht: mapping.count },
+    });
+    return { kunde: k, absatzZeilenGeloescht: absatz.count, mappingGeloescht: mapping.count };
+  }
 }

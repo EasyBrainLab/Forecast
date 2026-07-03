@@ -114,4 +114,11 @@ export class AbsatzController {
   kundeRegionRemove(@Param('kunde') kunde: string, @CurrentUser() aktor: RequestUser) {
     return this.kundeRegion.remove(decodeURIComponent(kunde), aktor);
   }
+
+  /** Löscht einen fehlerhaft importierten Kunden vollständig (Absatz-Zeilen + Zuordnung). */
+  @Roles('ADMIN')
+  @Delete('kunde/:kunde')
+  kundeLoeschen(@Param('kunde') kunde: string, @CurrentUser() aktor: RequestUser) {
+    return this.kundeRegion.loeschenKunde(decodeURIComponent(kunde), aktor);
+  }
 }
