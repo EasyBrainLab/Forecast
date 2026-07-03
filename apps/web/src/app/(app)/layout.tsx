@@ -9,6 +9,7 @@ const NAV: { href: string; label: string; rollen: Rolle[] }[] = [
   { href: '/forecast', label: 'Forecast / Erfassung', rollen: ['AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN'] },
   { href: '/forecast-monatlich', label: 'Forecast (Monatssicht)', rollen: ['AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN'] },
   { href: '/statement', label: 'Vertriebs-Statement', rollen: ['AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT'] },
+  { href: '/tender', label: 'Ausschreibungen / Tender', rollen: ['AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT'] },
   { href: '/konsolidierung', label: 'Konsolidierung', rollen: ['VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN'] },
   { href: '/absatz', label: 'Absatz / Stückzahlen', rollen: ['AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT'] },
   { href: '/reconciliation', label: 'Sales-Flash & Abgleich', rollen: ['VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT'] },
@@ -17,6 +18,8 @@ const NAV: { href: string; label: string; rollen: Rolle[] }[] = [
   { href: '/status-board', label: 'Status-Board', rollen: ['VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT'] },
   { href: '/import', label: 'Import', rollen: ['BU_LEITER', 'ADMIN'] },
   { href: '/admin/kunde-region', label: 'Kunden → Region', rollen: ['ADMIN', 'SUPPORT'] },
+  { href: '/admin/competitor', label: 'Wettbewerber', rollen: ['ADMIN', 'SUPPORT'] },
+  { href: '/admin/customer-site', label: 'Standorte / Kliniken', rollen: ['ADMIN', 'SUPPORT'] },
   { href: '/admin/users', label: 'Nutzerverwaltung', rollen: ['ADMIN', 'SUPPORT'] },
 ];
 

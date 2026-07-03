@@ -41,6 +41,15 @@ export default function KundeRegionPage() {
     mutationFn: (kunde: string) => api.del(`/absatz/kunde-region/${encodeURIComponent(kunde)}`),
     onSuccess: invalidate,
   });
+  const loeschen = useMutation({
+    mutationFn: (kunde: string) => api.del(`/absatz/kunde/${encodeURIComponent(kunde)}`),
+    onSuccess: invalidate,
+  });
+  const loeschenMitConfirm = (kunde: string) => {
+    if (window.confirm(`Kunde „${kunde}" und ALLE zugehörigen Absatz-Datensätze dauerhaft löschen?\n\nNur für fehlerhaft importierte Einträge gedacht — kann nicht rückgängig gemacht werden.`)) {
+      loeschen.mutate(kunde);
+    }
+  };
 
   const speichern = (kunde: string) => {
     const regionCode = auswahl[kunde];
@@ -54,7 +63,7 @@ export default function KundeRegionPage() {
         <h1 className="text-2xl font-bold text-ez-primary">Kunden → Region-Zuordnung</h1>
         <p className="text-sm text-gray-500">
           Ordnet Kunden aus dem Stückzahl-Import einer Vertriebsregion zu. Erst dadurch sieht ein AGM „seine" Absatzzahlen. Nicht zugeordnete Kunden bleiben nur BU-weit sichtbar.
-          Eine Zuordnung wirkt rückwirkend auf bereits importierte Zeilen.
+          Eine Zuordnung wirkt rückwirkend auf bereits importierte Zeilen. <strong>Löschen</strong> entfernt einen fehlerhaft importierten Kunden samt seiner Absatz-Datensätze dauerhaft.
         </p>
       </div>
 
@@ -95,9 +104,12 @@ export default function KundeRegionPage() {
                       ))}
                     </select>
                   </td>
-                  <td className="py-1 text-right">
+                  <td className="py-1 text-right whitespace-nowrap">
                     <Button variant="ghost" className="px-2 py-1 text-xs" disabled={!auswahl[k.kunde]} onClick={() => speichern(k.kunde)}>
                       Zuordnen
+                    </Button>
+                    <Button variant="ghost" className="ml-1 px-2 py-1 text-xs text-ez-accent" onClick={() => loeschenMitConfirm(k.kunde)}>
+                      Löschen
                     </Button>
                   </td>
                 </tr>
@@ -137,9 +149,12 @@ export default function KundeRegionPage() {
                       ))}
                     </select>
                   </td>
-                  <td className="py-1 text-right">
-                    <Button variant="ghost" className="px-2 py-1 text-xs text-ez-accent" onClick={() => entfernen.mutate(m.kunde)}>
-                      Entfernen
+                  <td className="py-1 text-right whitespace-nowrap">
+                    <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => entfernen.mutate(m.kunde)}>
+                      Zuordnung lösen
+                    </Button>
+                    <Button variant="ghost" className="ml-1 px-2 py-1 text-xs text-ez-accent" onClick={() => loeschenMitConfirm(m.kunde)}>
+                      Löschen
                     </Button>
                   </td>
                 </tr>
