@@ -12,6 +12,13 @@ function num(s: string | undefined): number {
   return Number.isNaN(n) ? 0 : n;
 }
 
+export interface UebersprungeneZeile {
+  zeile: number;
+  kunde: string;
+  land: string;
+  grund: string;
+}
+
 export interface AbsatzBericht {
   jahr: number;
   bisMonat: number;
@@ -21,7 +28,12 @@ export interface AbsatzBericht {
   seedsGesamt: number;
   seedsVorjahr: number;
   ruthenGesamt: number;
+  /** Detailliste der aussortierten Zeilen (max. 100 für die Anzeige). */
+  uebersprungeneZeilen: UebersprungeneZeile[];
 }
+
+/** Namen, die keine Kunden sind (Summen-/Metadaten-Zeilen aus dem Power-BI-Export). */
+const META_NAMEN = new Set(['total', 'summe', 'gesamt', 'grand total', 'ergebnis', 'gesamtergebnis', 'sum', 'totals']);
 
 /** Parst die Periode aus dem Dateinamen, z.B. "SF_01_05_2026_qty_by_Region.csv" -> {jahr:2026, bisMonat:5}. */
 export function parsePeriodeAusDateiname(name: string): { jahr: number; bisMonat: number } | null {
@@ -48,39 +60,63 @@ export class AbsatzImportService {
     });
 
     const inserts: Prisma.AbsatzCreateManyInput[] = [];
+    const uebersprungeneZeilen: UebersprungeneZeile[] = [];
     let uebersprungen = 0;
     let seedsGesamt = 0;
     let seedsVorjahr = 0;
     let ruthenGesamt = 0;
 
+    let zeilenNr = 1; // 1 = Header; Datenzeilen ab 2
     for (const r of records) {
+      zeilenNr++;
       const iso = (r['Country'] ?? '').trim().toUpperCase();
-      if (!iso || !laender.has(iso)) {
+      const kunde = (r['SOL_DELIVERYADDRESSNAME'] ?? '').trim();
+      const skip = (grund: string): void => {
         uebersprungen++;
+        if (uebersprungeneZeilen.length < 100) uebersprungeneZeilen.push({ zeile: zeilenNr, kunde: kunde || '(leer)', land: iso || '(leer)', grund });
+      };
+      // Plausibilitätsregeln: nur echte Kundenzeilen importieren — Summen-/Meta-/Nullzeilen aussortieren,
+      // statt sie (wie früher) als Kunde "Unbekannt" zu übernehmen. Summentreue hat Vorrang:
+      // Zeilen MIT Mengen aber ohne Kundennamen werden als Sammel-Eintrag importiert, nie verworfen.
+      if (!iso || !laender.has(iso)) {
+        skip(iso ? `Unbekanntes Land „${iso}"` : 'Land fehlt');
+        continue;
+      }
+      if (META_NAMEN.has(kunde.toLowerCase())) {
+        skip('Summen-/Metadaten-Zeile (kein Kunde) — würde doppelt zählen');
         continue;
       }
       const seeds = num(r['Seeds']);
       const seedsPY = num(r['SeedsPY']);
       const ruthen = num(r['Ruthen']);
+      const ruthenPY = num(r['RuthenPY']);
+      const icTotal = num(r['IC Total']);
+      const isTotal = num(r['IS total']);
+      const s16 = num(r['QTYS16Sold']);
+      const s16PY = num(r['QTYS16SoldPY']);
+      if (seeds === 0 && seedsPY === 0 && ruthen === 0 && ruthenPY === 0 && icTotal === 0 && isTotal === 0 && s16 === 0 && s16PY === 0) {
+        skip('Keine Mengen (alle Werte 0, auch Vorjahr)');
+        continue;
+      }
+      const kundeName = kunde || '(ohne Kundenname)';
       seedsGesamt += seeds;
       seedsVorjahr += seedsPY;
       ruthenGesamt += ruthen;
-      const kunde = (r['SOL_DELIVERYADDRESSNAME'] ?? '').trim() || 'Unbekannt';
       inserts.push({
         jahr: periode.jahr,
         bisMonat: periode.bisMonat,
         landId: iso,
-        kunde,
-        regionCode: kundeRegion.get(kunde) ?? null,
+        kunde: kundeName,
+        regionCode: kundeRegion.get(kundeName) ?? null,
         stadt: (r['SO_DELIVERYADDRESSCITY'] ?? '').trim() || null,
         seeds,
         seedsVorjahr: seedsPY,
         ruthen,
-        ruthenVorjahr: num(r['RuthenPY']),
-        icTotal: num(r['IC Total']),
-        isTotal: num(r['IS total']),
-        s16: num(r['QTYS16Sold']),
-        s16Vorjahr: num(r['QTYS16SoldPY']),
+        ruthenVorjahr: ruthenPY,
+        icTotal,
+        isTotal,
+        s16,
+        s16Vorjahr: s16PY,
         details: r as unknown as Prisma.InputJsonValue,
         importBatchId: batch.id,
       });
@@ -108,6 +144,7 @@ export class AbsatzImportService {
       seedsGesamt: Math.round(seedsGesamt),
       seedsVorjahr: Math.round(seedsVorjahr),
       ruthenGesamt: Math.round(ruthenGesamt),
+      uebersprungeneZeilen,
     };
     await this.prisma.importBatch.update({
       where: { id: batch.id },

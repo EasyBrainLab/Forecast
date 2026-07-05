@@ -26,10 +26,16 @@ async function main(): Promise<void> {
 
   check('Periode aus Dateiname = 2026/5', periode?.jahr === 2026 && periode?.bisMonat === 5);
   const { bericht } = await imp.importiere(buffer, name, periode!, { id: admin.id, email: admin.email });
-  console.log('  Bericht:', JSON.stringify(bericht));
+  console.log('  Bericht:', JSON.stringify({ ...bericht, uebersprungeneZeilen: `${bericht.uebersprungeneZeilen.length} Einträge` }));
   check('Seeds gesamt = 117.284', Math.abs(bericht.seedsGesamt - 117284) < 2);
-  check('Seeds Vorjahr = 124.415', Math.abs(bericht.seedsVorjahr - 124415) < 2);
-  check('Zeilen importiert > 290', bericht.zeilenImportiert > 290);
+  check('Seeds Vorjahr = 124.415 (Summentreue trotz Härtung)', Math.abs(bericht.seedsVorjahr - 124415) < 2);
+  // Härtung (Quick-Win A2): Zeilen ohne jegliche Mengen werden aussortiert (waren Rauschen in der
+  // Kunden->Region-Liste); Zeile-mit-Mengen-ohne-Name wird als '(ohne Kundenname)' erhalten.
+  check('Härtung: Null-/Meta-Zeilen aussortiert (123 in Realdatei)', bericht.zeilenUebersprungen === 123);
+  check('Bilanz: importiert + übersprungen = gesamt', bericht.zeilenImportiert + bericht.zeilenUebersprungen === bericht.zeilenGesamt);
+  check('Übersprungene mit Grund ausgewiesen', bericht.uebersprungeneZeilen.length > 0 && bericht.uebersprungeneZeilen.every((z) => !!z.grund));
+  const ohneName = await prisma.absatz.findFirst({ where: { jahr: 2026, bisMonat: 5, kunde: '(ohne Kundenname)' } });
+  check('Namenlose Mengen-Zeile als Sammel-Eintrag erhalten (40 PY-Seeds)', ohneName !== null && Math.round(Number(ohneName?.seedsVorjahr ?? 0)) === 40);
 
   const { bericht: b2 } = await imp.importiere(buffer, name, periode!, { id: admin.id, email: admin.email });
   const cnt = await prisma.absatz.count({ where: { jahr: 2026, bisMonat: 5 } });

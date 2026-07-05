@@ -444,17 +444,18 @@ model ImportBatch {
 }
 
 model ImportQuarantaene {
-  id            String            @id @default(uuid())
-  importBatchId String
-  zeilenNummer  Int
-  recid         String?
-  rohdaten      Json
-  grund         QuarantaeneGrund
-  detail        String?
-  status        QuarantaeneStatus @default(OFFEN)
-  geklaertVonId String?
-  geklaertAm    DateTime?
-  erstelltAm    DateTime          @default(now())
+  id             String            @id @default(uuid())
+  importBatchId  String
+  zeilenNummer   Int
+  recid          String?
+  rohdaten       Json
+  grund          QuarantaeneGrund
+  detail         String?
+  status         QuarantaeneStatus @default(OFFEN)
+  geklaertVonId  String?
+  geklaertAm     DateTime?
+  klaerKommentar String?
+  erstelltAm     DateTime          @default(now())
 
   importBatch ImportBatch @relation(fields: [importBatchId], references: [id])
 
