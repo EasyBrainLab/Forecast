@@ -1,6 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Ampel, Button, Card, Input, keur, prozent } from '@/components/ui';
@@ -35,6 +36,7 @@ interface Matrix {
 }
 
 export default function ForecastPage() {
+  const t = useTranslations('forecast');
   const { user } = useAuth();
   const qc = useQueryClient();
   const [sel, setSel] = useState<{ periode: string; regionCode: string } | null>(null);
@@ -101,26 +103,28 @@ export default function ForecastPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-ez-primary">Forecast — Gegenüberstellung &amp; Erfassung</h1>
+      <h1 className="text-2xl font-bold text-ez-primary">{t('titel')}</h1>
 
       {kannOeffnen && (
         <Card className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="mb-1 block text-sm font-medium">Forecast-Periode öffnen (alle Regionen)</label>
+            <label className="mb-1 block text-sm font-medium">{t('periodeOeffnen')}</label>
             <input type="month" className="rounded border border-gray-300 px-3 py-2 text-sm" value={neuePeriode} onChange={(e) => setNeuePeriode(e.target.value)} />
           </div>
           <Button onClick={() => oeffnen.mutate()} disabled={oeffnen.isPending}>
-            {oeffnen.isPending ? 'Öffne…' : 'Periode öffnen'}
+            {oeffnen.isPending ? t('oeffnet') : t('oeffnen')}
           </Button>
-          {oeffnen.isSuccess && <span className="text-sm text-ez-ampelGruen">Geöffnet ✓</span>}
+          {oeffnen.isSuccess && <span className="text-sm text-ez-ampelGruen">{t('geoeffnet')}</span>}
           {oeffnen.isError && <span className="text-sm text-ez-accent">{(oeffnen.error as Error).message}</span>}
-          <p className="w-full text-xs text-gray-400">Voraussetzung: Budget &amp; Ist für das Jahr sind importiert (Menü „Import"). Die Restmonate werden aus dem Budget vorbelegt.</p>
+          <p className="w-full text-xs text-gray-400">{t('oeffnenHinweis')}</p>
         </Card>
       )}
 
       {perioden && perioden.length === 0 && (
         <Card>
-          <p className="text-gray-600">Es ist noch keine Forecast-Periode geöffnet. {kannOeffnen ? 'Öffne oben eine Periode.' : 'Eine Periode wird vom BU-Leiter/Admin nach dem Ist-Import geöffnet.'}</p>
+          <p className="text-gray-600">
+            {t('keinePeriode')} {kannOeffnen ? t('keinePeriodeAdmin') : t('keinePeriodeAgm')}
+          </p>
         </Card>
       )}
 
@@ -147,11 +151,11 @@ export default function ForecastPage() {
                 {matrix.regionCode} · {matrix.periode}
               </span>
               <span className="ml-2 rounded bg-gray-100 px-2 py-0.5 text-xs">{matrix.status}</span>
-              <span className="ml-2 text-xs text-gray-400">Schwellwert {matrix.schwellwertProzent} %</span>
+              <span className="ml-2 text-xs text-gray-400">{t('schwellwert', { prozent: matrix.schwellwertProzent })}</span>
             </div>
             {matrix.status === 'OFFEN' && user?.rolle === 'AGM' && Object.keys(edits).length === 0 && (
               <Button onClick={() => bestaetigen.mutate()} disabled={bestaetigen.isPending}>
-                {bestaetigen.isPending ? 'Bestätige…' : 'Unverändert bestätigen (1 Klick)'}
+                {bestaetigen.isPending ? t('bestaetigt') : t('bestaetigen')}
               </Button>
             )}
           </div>
@@ -160,13 +164,13 @@ export default function ForecastPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-left text-gray-600">
                 <tr>
-                  <th className="p-2">Produktgruppe</th>
-                  <th className="p-2">Land</th>
-                  <th className="p-2 text-right">Budget Rest (kEUR)</th>
-                  <th className="p-2 text-right">Ist YTD (kEUR)</th>
-                  <th className="p-2 text-right">Forecast Rest (kEUR)</th>
-                  <th className="p-2 text-right">YEE (kEUR)</th>
-                  <th className="p-2 text-right">∆ Bud %</th>
+                  <th className="p-2">{t('spalteProduktgruppe')}</th>
+                  <th className="p-2">{t('spalteLand')}</th>
+                  <th className="p-2 text-right">{t('spalteBudgetRest')}</th>
+                  <th className="p-2 text-right">{t('spalteIstYtd')}</th>
+                  <th className="p-2 text-right">{t('spalteForecastRest')}</th>
+                  <th className="p-2 text-right">{t('spalteYee')}</th>
+                  <th className="p-2 text-right">{t('spalteAbw')}</th>
                   <th className="p-2" />
                 </tr>
               </thead>
@@ -202,7 +206,7 @@ export default function ForecastPage() {
                 })}
                 <tr className="border-t-2 bg-gray-50 font-bold">
                   <td className="p-2" colSpan={2}>
-                    Summe Region
+                    {t('summeRegion')}
                   </td>
                   <td className="p-2 text-right">{keur(summen.budget)}</td>
                   <td className="p-2 text-right">{keur(summen.ist)}</td>
@@ -213,21 +217,19 @@ export default function ForecastPage() {
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-gray-400">
-            Beträge sind die Restmonate {matrix.periode.slice(5)}–12 in kEUR. Forecast-Wert anpassen → wird proportional auf die Restmonate verteilt.
-          </p>
+          <p className="text-xs text-gray-400">{t('fussnote', { von: matrix.periode.slice(5) })}</p>
 
           {editierbar && Object.keys(edits).length > 0 && (
             <div className="space-y-2 rounded border border-ez-primary/30 bg-ez-primary/5 p-3">
-              <label className="block text-sm font-medium">Kommentar (Pflicht bei Abweichung &gt; {matrix.schwellwertProzent} %)</label>
-              <Input value={kommentar} onChange={(e) => setKommentar(e.target.value)} placeholder="z. B. Großauftrag Q3, Lieferverschiebung …" />
+              <label className="block text-sm font-medium">{t('kommentarLabel', { prozent: matrix.schwellwertProzent })}</label>
+              <Input value={kommentar} onChange={(e) => setKommentar(e.target.value)} placeholder={t('kommentarPlaceholder')} />
               {anpassen.isError && <p className="text-sm text-ez-accent">{(anpassen.error as Error).message}</p>}
               <div className="flex gap-2">
                 <Button onClick={() => anpassen.mutate()} disabled={anpassen.isPending}>
-                  {anpassen.isPending ? 'Speichere…' : `${Object.keys(edits).length} Anpassung(en) speichern`}
+                  {anpassen.isPending ? t('speichert') : t('speichern', { anzahl: Object.keys(edits).length })}
                 </Button>
                 <Button variant="ghost" onClick={() => setEdits({})}>
-                  Verwerfen
+                  {t('verwerfen')}
                 </Button>
               </div>
             </div>

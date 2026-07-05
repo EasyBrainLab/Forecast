@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { getToken } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Button, Card } from '@/components/ui';
@@ -29,6 +30,8 @@ async function download(pfad: string, methode: 'GET' | 'POST', dateiname: string
 }
 
 function ExportKarte({ titel, beschreibung, format, onDownload }: { titel: string; beschreibung: string; format: string; onDownload: () => Promise<void> }) {
+  const t = useTranslations('export');
+  const tc = useTranslations('common');
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState('');
   const [ok, setOk] = useState(false);
@@ -56,9 +59,9 @@ function ExportKarte({ titel, beschreibung, format, onDownload }: { titel: strin
       </div>
       <div>
         <Button onClick={klick} disabled={busy}>
-          {busy ? 'Erzeuge…' : 'Herunterladen'}
+          {busy ? t('erzeuge') : tc('herunterladen')}
         </Button>
-        {ok && <p className="mt-2 text-sm text-ez-ampelGruen">✓ Download gestartet.</p>}
+        {ok && <p className="mt-2 text-sm text-ez-ampelGruen">{t('gestartet')}</p>}
         {fehler && <p className="mt-2 rounded bg-ez-accent/10 p-2 text-sm text-ez-accent">✗ {fehler}</p>}
       </div>
     </Card>
@@ -66,6 +69,7 @@ function ExportKarte({ titel, beschreibung, format, onDownload }: { titel: strin
 }
 
 export default function ExportPage() {
+  const t = useTranslations('export');
   const { user } = useAuth();
   const heute = new Date();
   const [jahr, setJahr] = useState(heute.getUTCFullYear());
@@ -77,8 +81,8 @@ export default function ExportPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-ez-primary">Export-Center</h1>
-          <p className="text-sm text-gray-500">Berichte und Rohdaten per Knopfdruck — Datenstand des gewählten Jahres.</p>
+          <h1 className="text-2xl font-bold text-ez-primary">{t('titel')}</h1>
+          <p className="text-sm text-gray-500">{t('beschreibung')}</p>
         </div>
         <select className="rounded border border-gray-300 px-2 py-1 text-sm" value={jahr} onChange={(e) => setJahr(Number(e.target.value))}>
           {[2024, 2025, 2026, 2027].map((y) => (
@@ -92,31 +96,29 @@ export default function ExportPage() {
       <div className="grid gap-4 lg:grid-cols-3">
         {darfAbweichung && (
           <ExportKarte
-            titel="Excel-Abweichungsbericht"
-            beschreibung="Budget vs. Forecast vs. Ist je Region — mit Δ absolut/%, Ampellogik und fixierter Kopfzeile (kEUR)."
+            titel={t('abweichungTitel')}
+            beschreibung={t('abweichungText')}
             format="XLSX"
             onDownload={() => download(`/export/abweichungsbericht?jahr=${jahr}`, 'POST', `abweichungsbericht-${jahr}.xlsx`)}
           />
         )}
         {darfWord && (
           <ExportKarte
-            titel="Word-Managementbericht"
-            beschreibung="Management-Summary im E&Z-CI mit Regionen-Tabelle — Grundlage für den Monatsbericht an die Geschäftsführung."
+            titel={t('wordTitel')}
+            beschreibung={t('wordText')}
             format="DOCX"
             onDownload={() => download(`/export/word-report?jahr=${jahr}`, 'POST', `forecast-report-${jahr}.docx`)}
           />
         )}
         <ExportKarte
-          titel="Rohdaten-Export"
-          beschreibung="Ist-Umsätze des Jahres als CSV (deutsches Zahlenformat, UTF-8) — für eigene Auswertungen in Excel."
+          titel={t('rohdatenTitel')}
+          beschreibung={t('rohdatenText')}
           format="CSV"
           onDownload={() => download(`/export/rohdaten?jahr=${jahr}`, 'GET', `rohdaten-${jahr}.csv`)}
         />
       </div>
 
-      {!darfAbweichung && !darfWord && (
-        <p className="text-sm text-gray-400">Hinweis: Abweichungsbericht und Word-Report stehen der Vertriebs- und BU-Leitung zur Verfügung.</p>
-      )}
+      {!darfAbweichung && !darfWord && <p className="text-sm text-gray-400">{t('nurLeitung')}</p>}
     </div>
   );
 }

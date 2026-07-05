@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import {
   Bar,
   BarChart,
@@ -64,13 +65,15 @@ function ChartCard({ titel, children }: { titel: string; children: React.ReactNo
 }
 
 export default function UebersichtPage() {
+  const t = useTranslations('uebersicht');
+  const tc = useTranslations('common');
   const [jahr, setJahr] = useState(2026);
   const { data, isLoading, error } = useQuery({ queryKey: ['kpi', jahr], queryFn: () => api.get<Kpi>(`/dashboard/kpi?jahr=${jahr}`) });
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ez-primary">Übersicht &amp; KPIs</h1>
+        <h1 className="text-2xl font-bold text-ez-primary">{t('titel')}</h1>
         <select className="rounded border border-gray-300 px-3 py-1.5 text-sm" value={jahr} onChange={(e) => setJahr(Number(e.target.value))}>
           {[2024, 2025, 2026, 2027].map((j) => (
             <option key={j} value={j}>
@@ -80,60 +83,60 @@ export default function UebersichtPage() {
         </select>
       </div>
 
-      {isLoading && <p className="text-gray-500">Lädt…</p>}
+      {isLoading && <p className="text-gray-500">{tc('laedt')}</p>}
       {error && <p className="text-ez-accent">{(error as Error).message}</p>}
 
       {data && (
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <KpiCard
-              titel="Ist YTD"
+              titel={t('istYtd')}
               wert={mio(data.kennzahlen.istYtd)}
-              sub={data.istQuelle === 'SALES_FLASH' ? `Controlling (Sales Flash) · ${data.stichtag}` : `GL External Revenue · ${data.stichtag}`}
+              sub={data.istQuelle === 'SALES_FLASH' ? t('quelleSalesFlash', { stichtag: data.stichtag }) : t('quelleGl', { stichtag: data.stichtag })}
             />
-            <KpiCard titel="Budget (Jahr)" wert={mio(data.kennzahlen.budget)} />
-            <KpiCard titel="YEE (Hochrechnung)" wert={mio(data.kennzahlen.yee)} farbe={FORECAST} />
+            <KpiCard titel={t('budgetJahr')} wert={mio(data.kennzahlen.budget)} />
+            <KpiCard titel={t('yee')} wert={mio(data.kennzahlen.yee)} farbe={FORECAST} />
             <KpiCard
-              titel="Abweichung Budget"
+              titel={t('abwBudget')}
               wert={data.kennzahlen.abweichungProzent === null ? '—' : `${data.kennzahlen.abweichungProzent.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`}
               farbe={(data.kennzahlen.abweichungProzent ?? 0) < 0 ? ACCENT : '#1E7B34'}
             />
             <KpiCard
-              titel="Wachstum YoY"
+              titel={t('yoy')}
               wert={data.kennzahlen.yoyProzent === null ? '—' : `${data.kennzahlen.yoyProzent.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`}
-              sub={`Vorjahr ${mio(data.kennzahlen.vorjahrYtd)}`}
+              sub={t('vorjahrWert', { wert: mio(data.kennzahlen.vorjahrYtd) })}
               farbe={(data.kennzahlen.yoyProzent ?? 0) < 0 ? ACCENT : '#1E7B34'}
             />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <ChartCard titel={`Monat: Ist vs. Budget vs. Vorjahr ${jahr} (kEUR)`}>
-              <ComposedChart data={data.umsatzProMonat.map((m) => ({ monat: m.monat, Ist: k(m.ist), Budget: k(m.budget), Vorjahr: k(m.vorjahr) }))}>
+            <ChartCard titel={t('chartMonat', { jahr })}>
+              <ComposedChart data={data.umsatzProMonat.map((m) => ({ monat: m.monat, [t('serieIst')]: k(m.ist), [t('serieBudget')]: k(m.budget), [t('serieVorjahr')]: k(m.vorjahr) }))}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
                 <XAxis dataKey="monat" fontSize={12} />
                 <YAxis fontSize={12} />
                 <Tooltip formatter={(v) => tip(v as number)} />
                 <Legend />
-                <Bar dataKey="Budget" fill="#C9A227" fillOpacity={0.5} />
-                <Line type="monotone" dataKey="Ist" stroke={PRIMARY} strokeWidth={2.5} dot={false} />
-                <Line type="monotone" dataKey="Vorjahr" stroke="#9CA3AF" strokeWidth={2} strokeDasharray="4 4" dot={false} />
+                <Bar dataKey={t('serieBudget')} fill="#C9A227" fillOpacity={0.5} />
+                <Line type="monotone" dataKey={t('serieIst')} stroke={PRIMARY} strokeWidth={2.5} dot={false} />
+                <Line type="monotone" dataKey={t('serieVorjahr')} stroke="#9CA3AF" strokeWidth={2} strokeDasharray="4 4" dot={false} />
               </ComposedChart>
             </ChartCard>
 
-            <ChartCard titel="Ist · Budget · Forecast je Region (kEUR)">
-              <BarChart data={data.istVsBudgetVsForecast.map((r) => ({ name: r.regionCode, Ist: k(r.ist), Budget: k(r.budget), Forecast: k(r.forecast) }))}>
+            <ChartCard titel={t('chartRegion')}>
+              <BarChart data={data.istVsBudgetVsForecast.map((r) => ({ name: r.regionCode, [t('serieIst')]: k(r.ist), [t('serieBudget')]: k(r.budget), [t('serieForecast')]: k(r.forecast) }))}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
                 <XAxis dataKey="name" fontSize={12} />
                 <YAxis fontSize={12} />
                 <Tooltip formatter={(v) => tip(v as number)} />
                 <Legend />
-                <Bar dataKey="Ist" fill={PRIMARY} />
-                <Bar dataKey="Budget" fill="#C9A227" />
-                <Bar dataKey="Forecast" fill={FORECAST} />
+                <Bar dataKey={t('serieIst')} fill={PRIMARY} />
+                <Bar dataKey={t('serieBudget')} fill="#C9A227" />
+                <Bar dataKey={t('serieForecast')} fill={FORECAST} />
               </BarChart>
             </ChartCard>
 
-            <ChartCard titel="Umsatz je Produktgruppe (kEUR)">
+            <ChartCard titel={t('chartProduktgruppe')}>
               <PieChart>
                 <Pie
                   data={data.umsatzProProduktgruppe.map((p) => ({ name: p.produktgruppe, value: k(p.ist) }))}
@@ -152,13 +155,13 @@ export default function UebersichtPage() {
               </PieChart>
             </ChartCard>
 
-            <ChartCard titel="Top 10 Länder nach Umsatz (kEUR)">
-              <BarChart layout="vertical" data={data.topLaender.map((l) => ({ name: l.land, Umsatz: k(l.ist) }))} margin={{ left: 20 }}>
+            <ChartCard titel={t('chartTopLaender')}>
+              <BarChart layout="vertical" data={data.topLaender.map((l) => ({ name: l.land, [t('serieUmsatz')]: k(l.ist) }))} margin={{ left: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
                 <XAxis type="number" fontSize={12} />
                 <YAxis type="category" dataKey="name" width={110} fontSize={12} />
                 <Tooltip formatter={(v) => tip(v as number)} />
-                <Bar dataKey="Umsatz" fill={PRIMARY} />
+                <Bar dataKey={t('serieUmsatz')} fill={PRIMARY} />
               </BarChart>
             </ChartCard>
           </div>

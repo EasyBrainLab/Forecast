@@ -1,9 +1,11 @@
 'use client';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useLocale, useTranslations } from 'next-intl';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { api } from '@/lib/api';
 import { Card } from '@/components/ui';
+import { monKurz } from '@/lib/monate';
 
 const PRIMARY = '#0F516A';
 const VORJAHR = '#9CA3AF';
@@ -23,7 +25,6 @@ interface Kpi {
 }
 
 const fmt = (n: number): string => n.toLocaleString('de-DE');
-const MON = ['', 'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 
 function KpiCard({ titel, wert, sub, farbe }: { titel: string; wert: string; sub?: string; farbe?: string }) {
   return (
@@ -38,6 +39,10 @@ function KpiCard({ titel, wert, sub, farbe }: { titel: string; wert: string; sub
 }
 
 export default function AbsatzPage() {
+  const t = useTranslations('absatz');
+  const tc = useTranslations('common');
+  const locale = useLocale();
+  const MON = monKurz(locale);
   const { data: perioden } = useQuery({ queryKey: ['absatz-perioden'], queryFn: () => api.get<Periode[]>('/absatz/perioden') });
   const [sel, setSel] = useState<{ jahr: number; bisMonat: number } | null>(null);
   const aktiv = sel ?? (perioden && perioden[0] ? { jahr: perioden[0].jahr, bisMonat: perioden[0].bisMonat } : null);
@@ -50,7 +55,7 @@ export default function AbsatzPage() {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-bold text-ez-primary">Absatz / Stückzahlen</h1>
+        <h1 className="text-2xl font-bold text-ez-primary">{t('titel')}</h1>
         <div className="flex gap-2">
           {perioden?.map((p) => (
             <button
@@ -58,7 +63,7 @@ export default function AbsatzPage() {
               onClick={() => setSel({ jahr: p.jahr, bisMonat: p.bisMonat })}
               className={`rounded border px-3 py-1 text-sm ${aktiv?.jahr === p.jahr && aktiv?.bisMonat === p.bisMonat ? 'border-ez-primary bg-ez-primary text-white' : 'bg-white'}`}
             >
-              Jan–{MON[p.bisMonat]} {p.jahr}
+              {t('janBis', { monat: MON[p.bisMonat - 1], jahr: p.jahr })}
             </button>
           ))}
         </div>
@@ -66,26 +71,26 @@ export default function AbsatzPage() {
 
       {perioden && perioden.length === 0 && (
         <Card>
-          <p className="text-gray-600">Noch keine Stückzahl-Daten importiert. Lade die Datei unter „Import → Absatz / Stückzahlen" hoch.</p>
+          <p className="text-gray-600">{t('keineDaten')}</p>
         </Card>
       )}
-      {isLoading && <p className="text-gray-500">Lädt…</p>}
+      {isLoading && <p className="text-gray-500">{tc('laedt')}</p>}
 
       {data && (
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <KpiCard titel="Seeds (Stück)" wert={fmt(data.kennzahlen.seeds)} sub={`Jan–${MON[data.bisMonat]} ${data.jahr}`} />
-            <KpiCard titel="Seeds Vorjahr" wert={fmt(data.kennzahlen.seedsVorjahr)} farbe={VORJAHR} />
+            <KpiCard titel={t('seeds')} wert={fmt(data.kennzahlen.seeds)} sub={t('janBis', { monat: MON[data.bisMonat - 1], jahr: data.jahr })} />
+            <KpiCard titel={t('seedsVorjahr')} wert={fmt(data.kennzahlen.seedsVorjahr)} farbe={VORJAHR} />
             <KpiCard
-              titel="Veränderung Vorjahr"
+              titel={t('veraenderung')}
               wert={data.kennzahlen.seedsYoY === null ? '—' : `${data.kennzahlen.seedsYoY.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`}
               farbe={(data.kennzahlen.seedsYoY ?? 0) < 0 ? '#AA003C' : '#1E7B34'}
             />
-            <KpiCard titel="Ruthenium (Stück)" wert={fmt(data.kennzahlen.ruthen)} sub={`Vorjahr ${fmt(data.kennzahlen.ruthenVorjahr)}`} />
+            <KpiCard titel={t('ruthenium')} wert={fmt(data.kennzahlen.ruthen)} sub={t('vorjahrWert', { wert: fmt(data.kennzahlen.ruthenVorjahr) })} />
           </div>
 
           <Card className="p-4">
-            <h3 className="mb-3 text-sm font-semibold text-ez-primary">Verkaufte Seeds je Land — Ist vs. Vorjahr (Top 12)</h3>
+            <h3 className="mb-3 text-sm font-semibold text-ez-primary">{t('chartLand')}</h3>
             <div style={{ width: '100%', height: 320 }}>
               <ResponsiveContainer>
                 <BarChart data={data.seedsProLand.slice(0, 12)}>
@@ -94,8 +99,8 @@ export default function AbsatzPage() {
                   <YAxis fontSize={12} />
                   <Tooltip formatter={(v) => fmt(v as number)} />
                   <Legend />
-                  <Bar dataKey="seeds" name="Ist" fill={PRIMARY} />
-                  <Bar dataKey="vorjahr" name="Vorjahr" fill={VORJAHR} />
+                  <Bar dataKey="seeds" name={t('ist')} fill={PRIMARY} />
+                  <Bar dataKey="vorjahr" name={tc('vorjahr')} fill={VORJAHR} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -103,13 +108,13 @@ export default function AbsatzPage() {
 
           <div className="grid gap-4 lg:grid-cols-2">
             <Card className="p-4">
-              <h3 className="mb-3 text-sm font-semibold text-ez-primary">Top-Kunden nach Seeds</h3>
+              <h3 className="mb-3 text-sm font-semibold text-ez-primary">{t('topKunden')}</h3>
               <table className="w-full text-sm">
                 <thead className="text-left text-gray-500">
                   <tr>
-                    <th className="py-1">Kunde</th>
-                    <th className="py-1 text-right">Ist</th>
-                    <th className="py-1 text-right">Vorjahr</th>
+                    <th className="py-1">{tc('kunde')}</th>
+                    <th className="py-1 text-right">{t('ist')}</th>
+                    <th className="py-1 text-right">{tc('vorjahr')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -125,7 +130,7 @@ export default function AbsatzPage() {
             </Card>
 
             <Card className="p-4">
-              <h3 className="mb-3 text-sm font-semibold text-ez-primary">Stück je Produkt</h3>
+              <h3 className="mb-3 text-sm font-semibold text-ez-primary">{t('chartProdukt')}</h3>
               <div style={{ width: '100%', height: 280 }}>
                 <ResponsiveContainer>
                   <BarChart data={data.produkte} layout="vertical" margin={{ left: 30 }}>
@@ -133,7 +138,7 @@ export default function AbsatzPage() {
                     <XAxis type="number" fontSize={12} />
                     <YAxis type="category" dataKey="name" width={100} fontSize={11} />
                     <Tooltip formatter={(v) => fmt(v as number)} />
-                    <Bar dataKey="menge" name="Stück" fill={PRIMARY} />
+                    <Bar dataKey="menge" name={t('stueck')} fill={PRIMARY} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
