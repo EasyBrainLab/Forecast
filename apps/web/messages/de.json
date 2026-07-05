@@ -50,7 +50,8 @@
       "BU_LEITER": "BU-Leitung",
       "ADMIN": "Administration",
       "SUPPORT": "Support"
-    }
+    },
+    "ki": "KI & Ausschreibungen"
   },
   "login": {
     "titel": "Forecast-Portal",
@@ -232,7 +233,13 @@
   "report": {
     "titel": "Monatsbericht Vertrieb",
     "beschreibung": "Strukturierter Monatsbericht je Region — ersetzt das Word-Formular (P12F055). Pflicht zum Einreichen: Ausblick (Forecast) und Wettbewerbsbeobachtung. Frist: 10. des Folgemonats.",
-    "statusLabel": { "OFFEN": "Offen", "ENTWURF": "Entwurf", "IN_PRUEFUNG_KI": "In KI-Prüfung", "EINGEREICHT": "Eingereicht", "GELESEN": "Gelesen" },
+    "statusLabel": {
+      "OFFEN": "Offen",
+      "ENTWURF": "Entwurf",
+      "IN_PRUEFUNG_KI": "In KI-Prüfung",
+      "EINGEREICHT": "Eingereicht",
+      "GELESEN": "Gelesen"
+    },
     "keineRegion": "Keine Region zugeordnet. Bitte wenden Sie sich an die Administration.",
     "zahlenTitel": "2 · Plan/Ist des Monats (automatisch aus den Systemdaten)",
     "zahlenLeer": "Keine Plan-/Ist-Daten für diesen Monat.",
@@ -413,7 +420,8 @@
           "Erinnerungen: 14, 7, 3 und 1 Tag vor der Frist erhalten die AGMs der Region automatisch eine E-Mail.",
           "Ampel im Board: Grün = Frist fern, Gelb = ≤ 30 Tage, Rot = ≤ 7 Tage oder überfällig.",
           "Status pflegen: Beobachtet → Eingereicht → Gewonnen / Verloren / Storniert. Preise (eigen vs. Wettbewerb) dokumentieren, wenn bekannt.",
-          "Tipp: Tender aus dem Monatsbericht heraus verknüpfen (Kritisches Thema, Typ „Ausschreibung“)."
+          "Tipp: Tender aus dem Monatsbericht heraus verknüpfen (Kritisches Thema, Typ „Ausschreibung“).",
+          "KI-Analyse: Ausschreibungs-PDF im Panel „Ausschreibung analysieren\" hochladen — die KI liest Referenz, Fristen, Lose und den Fragenkatalog aus. Nach der Fristen-/Zahlen-Prüfung: Tender per Klick anlegen und den Antwortentwurf als Word-Datei herunterladen (Entwurf — vor Abgabe fachlich prüfen)."
         ]
       },
       "leitung": {
@@ -472,5 +480,36 @@
     "erzeuge": "Erzeuge…",
     "gestartet": "✓ Download gestartet.",
     "nurLeitung": "Hinweis: Abweichungsbericht und Word-Report stehen der Vertriebs- und BU-Leitung zur Verfügung."
+  },
+  "tenderKi": {
+    "titel": "Ausschreibung analysieren (KI)",
+    "beschreibung": "Ausschreibungs-PDF hochladen — die KI liest Kerndaten, Fristen, Lose und den Fragenkatalog aus. Fristen und Mengen bestätigen Sie einzeln, dann Tender anlegen und den Antwortentwurf (Word) erzeugen.",
+    "nichtVerfuegbar": "KI-Analyse ist nicht konfiguriert. Administration: Schlüssel unter „KI & Ausschreibungen\" hinterlegen.",
+    "datei": "Ausschreibung (PDF oder Text, max. 15 MB)",
+    "hochladen": "Hochladen & analysieren",
+    "laeuft": "Analysiere Dokument… (kann bei langen PDFs etwas dauern)",
+    "zusammenfassung": "Zusammenfassung",
+    "kerndaten": "Kerndaten (prüfen & korrigieren)",
+    "lose": "Lose",
+    "losBezeichnung": "Bezeichnung",
+    "losMenge": "Menge",
+    "losVolumen": "Volumen (EUR)",
+    "guardrailTitel": "Fristen- & Zahlen-Prüfung (Pflicht)",
+    "guardrailText": "Bitte jede erkannte Frist/Menge gegen das Zitat aus dem Dokument prüfen — bestätigen oder korrigieren.",
+    "kontext": "Im Dokument",
+    "wert": "Wert",
+    "bestaetigt": "Geprüft",
+    "alleBestaetigen": "Alle als geprüft markieren",
+    "nochOffen": "{anzahl} Wert(e) noch ungeprüft",
+    "fragen": "Geforderte Angaben & Antworten (Entwurf — bitte prüfen/ergänzen)",
+    "quelle": "Fundstelle",
+    "nachweise": "Checkliste geforderter Nachweise",
+    "tenderAnlegen": "Tender anlegen",
+    "tenderAngelegt": "✓ Tender angelegt und mit dem Dokument verknüpft.",
+    "antwortDocx": "Antwortentwurf (Word) herunterladen",
+    "entwurfHinweis": "Das Word-Dokument ist ein KI-gestützter ENTWURF — vor Einreichung fachlich prüfen.",
+    "verwerfen": "Verwerfen",
+    "neu": "Neue Analyse",
+    "formatFehler": "Bitte PDF oder Textdatei wählen (Word als PDF exportieren)."
   }
 }

@@ -676,6 +676,7 @@ model Tender {
 
   lose            TenderLos[]
   reportEintraege ReportEintrag[]
+  dokumente       TenderDokument[]
 
   @@index([status])
   @@index([abgabefrist])
@@ -881,4 +882,36 @@ model VoiceSession {
   @@index([status])
   @@index([erstelltAm])
   @@map("voice_session")
+}
+
+// ─────────────── TENDER-DOKUMENT + KI-ANALYSE (Ausschreibung hochladen -> Claude analysiert -> Tender/Antwortentwurf) ───────────────
+enum TenderDokumentStatus {
+  HOCHGELADEN
+  ANALYSIERT
+  UEBERNOMMEN
+  VERWORFEN
+}
+
+model TenderDokument {
+  id               String               @id @default(uuid())
+  tenderId         String? // nach Übernahme verknüpft
+  dateiname        String
+  mimeType         String
+  groesseBytes     Int
+  inhalt           Bytes // Original (Audit / erneute Analyse)
+  status           TenderDokumentStatus @default(HOCHGELADEN)
+  analyse          Json? // strukturierte KI-Analyse inkl. Zahlen-Guardrail
+  llmModell        String?
+  hochgeladenVonId String
+  hochgeladenVon   String // denormalisiert (E-Mail)
+  regionCode       String? // Scoping-Vorschlag des Uploaders
+  erstelltAm       DateTime             @default(now())
+  aktualisiertAm   DateTime             @updatedAt
+
+  tender Tender? @relation(fields: [tenderId], references: [id], onDelete: SetNull)
+
+  @@index([tenderId])
+  @@index([status])
+  @@index([hochgeladenVonId])
+  @@map("tender_dokument")
 }

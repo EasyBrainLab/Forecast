@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Button, Card, Ampel, keur } from '@/components/ui';
+import { TenderAnalysePanel } from '@/components/tender-analyse-panel';
 
 const STATUS_REIHENFOLGE = ['BEOBACHTET', 'EINGEREICHT', 'GEWONNEN', 'VERLOREN', 'STORNIERT'];
 const ABGESCHLOSSEN = new Set(['GEWONNEN', 'VERLOREN', 'STORNIERT']);
@@ -419,6 +420,8 @@ export default function TenderPage() {
           {darfErstellen && !formOffen && <Button onClick={oeffnenNeu}>{t('neu')}</Button>}
         </div>
       </div>
+
+      {darfErstellen && <TenderAnalysePanel regionen={formRegionen} onTenderAngelegt={reload} />}
 
       {formOffen && <TenderForm bearbeiten={bearbeiten} regionen={formRegionen} competitor={competitor ?? []} istAgm={istAgm} onFertig={() => { schliessen(); reload(); }} onAbbrechen={schliessen} />}
 

@@ -240,6 +240,24 @@ seit Monatswechsel kalendarisch fehl — Branch berührt diese Services/Skripte 
 Stichtag im Test pinnen. Aufruf-Hinweis: Alt-Skripte erwarten `DATEN_DIR=<abs. Pfad>/docs`, die neueren
 (`absatz`, `erweiterungen`) `DATEN_DIR=<Repo-Root>`.
 
+### KI-Ausbau (fertig, verifiziert · 2026-07-05) — Etappen K1–K3
+Nutzer-Auftrag: LLM-Modell + API-Keys im Tool pflegen; KI-Agent für Ausschreibungs-Auswertung.
+
+- **K1 — KI-Einstellungen im Tool (`/admin/ki`):** `KiConfigService` mit Auflösung DB-Einstellung → ENV-Fallback.
+  API-Keys AES-256-GCM-verschlüsselt (Server-`ENCRYPTION_KEY`), **write-only** — Status zeigt nur Herkunft
+  (DB/ENV/FEHLT), nie Werte; Audit ohne Key-Inhalte. Modellauswahl (Default `claude-opus-4-8`), Verbindungstest
+  (Anthropic `count_tokens`, OpenAI-Modell-Ping), Firmenprofil für Antwortentwürfe. Voice-Provider auf die
+  zentrale Konfiguration umgestellt. `verify:ki`: 12 Assertions (Crypto-Roundtrip/IV/Auth-Tag, Vorrang,
+  kein Klartext in DB).
+- **K2/K3 — Tender-Analyse-Agent:** `TenderDokument` (PDF/TXT ≤15 MB, Original als Audit). PDF geht als
+  document-Block **direkt an Claude** (Tabellen-/Formularverständnis; structured outputs, adaptive thinking) →
+  Referenz, Auftraggeber, Fristen, Lose, Nachweis-Checkliste, **Fragenkatalog mit Antwortvorschlägen +
+  Fundstellen**; Zahlen-Guardrail für Fristen/Mengen/Volumina (wörtliches Zitat, Einzelbestätigung im UI).
+  Übernahme legt den Tender vorbefüllt an (inkl. Lose, Dokument verknüpft); **Antwortentwurf als DOCX**
+  (Bieter-Firmenprofil, Kerndaten, Lose, Fragen/Antworten-Tabelle, Checkliste — als ENTWURF gekennzeichnet).
+  UI-Panel auf `/tender` (zweisprachig), Feature-Detection ohne Keys. AGM-Scoping: nur eigene Uploads.
+  `verify:tender-analyse`: 14 Assertions (Mock-E2E inkl. DOCX-Prüfung).
+
 ### Bewusste MVP-Annahmen (revidierbar)
 - **A-R1:** `customer_site` (R3) und `competitor` (R2) sind Entitäten, aber `Tender` referenziert sie noch nicht
   per FK — `Tender.krankenhaus` bleibt String, `Tender.wettbewerber` String[] (Namen). FK-Verknüpfung von
