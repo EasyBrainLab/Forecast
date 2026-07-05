@@ -50,7 +50,8 @@
       "BU_LEITER": "BU Management",
       "ADMIN": "Administration",
       "SUPPORT": "Support"
-    }
+    },
+    "ki": "AI & Tenders"
   },
   "login": {
     "titel": "Forecast Portal",
@@ -232,7 +233,13 @@
   "report": {
     "titel": "Monthly sales report",
     "beschreibung": "Structured monthly report per region — replaces the Word form (P12F055). Required for submission: outlook (forecast) and competition watch. Deadline: 10th of the following month.",
-    "statusLabel": { "OFFEN": "Open", "ENTWURF": "Draft", "IN_PRUEFUNG_KI": "AI review", "EINGEREICHT": "Submitted", "GELESEN": "Read" },
+    "statusLabel": {
+      "OFFEN": "Open",
+      "ENTWURF": "Draft",
+      "IN_PRUEFUNG_KI": "AI review",
+      "EINGEREICHT": "Submitted",
+      "GELESEN": "Read"
+    },
     "keineRegion": "No region assigned. Please contact the administration.",
     "zahlenTitel": "2 · Plan/actuals of the month (automatic from system data)",
     "zahlenLeer": "No plan/actual data for this month.",

@@ -1,5 +1,6 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
+import { KiConfigService } from '../ki/ki-config.service';
 
 /**
  * Provider-Abstraktion für Speech-to-Text und LLM-Extraktion.
@@ -20,33 +21,35 @@ export interface SttErgebnis {
 export class SttService {
   private readonly logger = new Logger('SttService');
 
-  /** 'openai' | 'mock' | 'aus' — auto: openai wenn Key vorhanden. */
-  provider(): 'openai' | 'mock' | 'aus' {
-    const konfiguriert = (process.env.STT_PROVIDER ?? '').toLowerCase();
-    if (konfiguriert === 'mock') return 'mock';
-    if (konfiguriert === 'openai' || process.env.OPENAI_API_KEY) return process.env.OPENAI_API_KEY ? 'openai' : 'aus';
-    return 'aus';
+  constructor(private readonly config: KiConfigService) {}
+
+  /** 'openai' | 'mock' | 'aus' — Mock nur per ENV (Test-Schalter); sonst openai, wenn Key in DB oder ENV. */
+  async provider(): Promise<'openai' | 'mock' | 'aus'> {
+    if ((process.env.STT_PROVIDER ?? '').toLowerCase() === 'mock') return 'mock';
+    return (await this.config.openaiKey()) ? 'openai' : 'aus';
   }
 
   async transkribiere(audio: Buffer, mimeType: string, spracheHint?: string | null): Promise<SttErgebnis> {
-    const provider = this.provider();
+    const provider = await this.provider();
     if (provider === 'mock') {
       // Deterministischer Mock: Audio-Buffer wird als UTF-8-Transkript interpretiert (Testbarkeit).
       return { text: audio.toString('utf-8'), sprache: spracheHint ?? 'de' };
     }
     if (provider === 'aus') {
-      throw new ServiceUnavailableException('Diktat ist nicht konfiguriert (OPENAI_API_KEY fehlt).');
+      throw new ServiceUnavailableException('Diktat ist nicht konfiguriert (OpenAI-Key fehlt — Admin → KI & Ausschreibungen).');
     }
+    const apiKey = (await this.config.openaiKey())!;
+    const sttModell = await this.config.sttModell();
     // OpenAI Whisper API (multipart) — Node 22: fetch/FormData/Blob global.
     const form = new FormData();
     const ext = mimeType.includes('mp4') || mimeType.includes('m4a') ? 'm4a' : mimeType.includes('mpeg') ? 'mp3' : mimeType.includes('ogg') ? 'ogg' : mimeType.includes('wav') ? 'wav' : 'webm';
     form.append('file', new Blob([new Uint8Array(audio)], { type: mimeType }), `diktat.${ext}`);
-    form.append('model', process.env.STT_MODEL ?? 'whisper-1');
+    form.append('model', sttModell);
     form.append('response_format', 'verbose_json');
     if (spracheHint && (VOICE_SPRACHEN as readonly string[]).includes(spracheHint)) form.append('language', spracheHint);
     const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      headers: { Authorization: `Bearer ${apiKey}` },
       body: form,
     });
     if (!res.ok) {
@@ -172,26 +175,27 @@ Regeln:
 export class LlmExtraktionService {
   private readonly logger = new Logger('LlmExtraktion');
 
-  provider(): 'anthropic' | 'mock' | 'aus' {
-    const konfiguriert = (process.env.LLM_PROVIDER ?? '').toLowerCase();
-    if (konfiguriert === 'mock') return 'mock';
-    if (konfiguriert === 'anthropic' || process.env.ANTHROPIC_API_KEY) return process.env.ANTHROPIC_API_KEY ? 'anthropic' : 'aus';
-    return 'aus';
+  constructor(private readonly config: KiConfigService) {}
+
+  /** Mock nur per ENV (Test-Schalter); sonst anthropic, wenn Key in DB oder ENV. */
+  async provider(): Promise<'anthropic' | 'mock' | 'aus'> {
+    if ((process.env.LLM_PROVIDER ?? '').toLowerCase() === 'mock') return 'mock';
+    return (await this.config.anthropicKey()) ? 'anthropic' : 'aus';
   }
 
-  modell(): string {
-    return process.env.LLM_MODEL ?? 'claude-opus-4-8';
+  async modell(): Promise<string> {
+    return this.config.llmModell();
   }
 
   async extrahiere(transkript: string): Promise<Extraktion> {
-    const provider = this.provider();
+    const provider = await this.provider();
     if (provider === 'mock') return this.mockExtraktion(transkript);
-    if (provider === 'aus') throw new ServiceUnavailableException('KI-Extraktion ist nicht konfiguriert (ANTHROPIC_API_KEY fehlt).');
+    if (provider === 'aus') throw new ServiceUnavailableException('KI-Extraktion ist nicht konfiguriert (Anthropic-Key fehlt — Admin → KI & Ausschreibungen).');
 
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const client = new Anthropic({ apiKey: (await this.config.anthropicKey())! });
     try {
       const response = await client.messages.create({
-        model: this.modell(),
+        model: await this.modell(),
         max_tokens: 16000,
         thinking: { type: 'adaptive' },
         system: SYSTEM_PROMPT,

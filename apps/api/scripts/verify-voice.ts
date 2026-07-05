@@ -44,7 +44,7 @@ async function main(): Promise<void> {
   await prisma.monthlyReport.deleteMany({ where: { periode } });
 
   // ── Status / Feature-Detection ──
-  const status = svc.status();
+  const status = await svc.status();
   check('Status: Diktat mit Mock-Providern verfügbar', status.verfuegbar && status.stt === 'mock' && status.llm === 'mock');
 
   // ── Upload -> Transkript (Mock-STT: Buffer = Transkript) ──

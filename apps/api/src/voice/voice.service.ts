@@ -33,9 +33,8 @@ export class VoiceService {
   ) {}
 
   /** Feature-Detection fürs Frontend (Keys bleiben serverseitig; nur Verfügbarkeit wird verraten). */
-  status() {
-    const sttProvider = this.stt.provider();
-    const llmProvider = this.llm.provider();
+  async status() {
+    const [sttProvider, llmProvider] = await Promise.all([this.stt.provider(), this.llm.provider()]);
     return {
       verfuegbar: sttProvider !== 'aus' && llmProvider !== 'aus',
       stt: sttProvider,
@@ -101,7 +100,7 @@ export class VoiceService {
         audioMimeType: mimeType,
         audioGroesse: audio.length,
         transkript: ergebnis.text,
-        sttProvider: this.stt.provider(),
+        sttProvider: await this.stt.provider(),
       },
     });
     await this.audit.write({ entitaet: 'VoiceSession', entitaetId: session.id, aktion: 'CREATE', userId: aktor.id, userEmail: aktor.email, metadaten: { periode, regionCode, bytes: audio.length, sprache: ergebnis.sprache } });
@@ -114,9 +113,10 @@ export class VoiceService {
     const session = await this.holeEigene(id, aktor);
     const roh = await this.llm.extrahiere(session.transkript);
     const angereichert = await this.matcheStammdaten(roh);
+    const llmProvider = await this.llm.provider();
     const updated = await this.prisma.voiceSession.update({
       where: { id },
-      data: { status: 'EXTRAHIERT', extraktion: angereichert as unknown as Prisma.InputJsonValue, llmModell: this.llm.provider() === 'anthropic' ? this.llm.modell() : 'mock' },
+      data: { status: 'EXTRAHIERT', extraktion: angereichert as unknown as Prisma.InputJsonValue, llmModell: llmProvider === 'anthropic' ? await this.llm.modell() : 'mock' },
     });
     await this.audit.write({ entitaet: 'VoiceSession', entitaetId: id, aktion: 'UPDATE', userId: aktor.id, userEmail: aktor.email, metadaten: { schritt: 'EXTRAKTION', eintraege: angereichert.eintraege.length, zahlen: angereichert.zahlen.length } });
     return this.toDto(updated);

@@ -28,7 +28,8 @@
     "verify:tender": "ts-node --transpile-only scripts/verify-tender.ts",
     "verify:customer-site": "ts-node --transpile-only scripts/verify-customer-site.ts",
     "verify:report": "ts-node --transpile-only scripts/verify-report.ts",
-    "verify:voice": "ts-node --transpile-only scripts/verify-voice.ts"
+    "verify:voice": "ts-node --transpile-only scripts/verify-voice.ts",
+    "verify:ki": "ts-node --transpile-only scripts/verify-ki.ts"
   },
   "prisma": {
     "seed": "ts-node --transpile-only prisma/seed.ts"

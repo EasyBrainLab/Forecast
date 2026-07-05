@@ -26,6 +26,7 @@ const NAV: { href: string; key: string; rollen: Rolle[] }[] = [
   { href: '/admin/competitor', key: 'competitor', rollen: ['ADMIN', 'SUPPORT'] },
   { href: '/admin/customer-site', key: 'customerSite', rollen: ['ADMIN', 'SUPPORT'] },
   { href: '/admin/users', key: 'users', rollen: ['ADMIN', 'SUPPORT'] },
+  { href: '/admin/ki', key: 'ki', rollen: ['ADMIN', 'SUPPORT'] },
   { href: '/hilfe', key: 'hilfe', rollen: ['AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT'] },
 ];
 

@@ -50,7 +50,8 @@
       "BU_LEITER": "BU-Leitung",
       "ADMIN": "Administration",
       "SUPPORT": "Support"
-    }
+    },
+    "ki": "KI & Ausschreibungen"
   },
   "login": {
     "titel": "Forecast-Portal",
@@ -232,7 +233,13 @@
   "report": {
     "titel": "Monatsbericht Vertrieb",
     "beschreibung": "Strukturierter Monatsbericht je Region — ersetzt das Word-Formular (P12F055). Pflicht zum Einreichen: Ausblick (Forecast) und Wettbewerbsbeobachtung. Frist: 10. des Folgemonats.",
-    "statusLabel": { "OFFEN": "Offen", "ENTWURF": "Entwurf", "IN_PRUEFUNG_KI": "In KI-Prüfung", "EINGEREICHT": "Eingereicht", "GELESEN": "Gelesen" },
+    "statusLabel": {
+      "OFFEN": "Offen",
+      "ENTWURF": "Entwurf",
+      "IN_PRUEFUNG_KI": "In KI-Prüfung",
+      "EINGEREICHT": "Eingereicht",
+      "GELESEN": "Gelesen"
+    },
     "keineRegion": "Keine Region zugeordnet. Bitte wenden Sie sich an die Administration.",
     "zahlenTitel": "2 · Plan/Ist des Monats (automatisch aus den Systemdaten)",
     "zahlenLeer": "Keine Plan-/Ist-Daten für diesen Monat.",
