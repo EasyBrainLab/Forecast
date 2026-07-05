@@ -129,6 +129,8 @@ export const EINSTELLUNG_KEYS = {
   POSTINGTYPE_WHITELIST: 'POSTINGTYPE_WHITELIST',
   IST_QUELLE: 'IST_QUELLE', // SALES_FLASH (verifiziertes Controlling-Ist) | GL (External Revenue)
   ABGLEICH_TOLERANZ_PROZENT: 'ABGLEICH_TOLERANZ_PROZENT', // Toleranzband GL<->Sales-Flash
+  REPORT_DEADLINE_TAG: 'REPORT_DEADLINE_TAG', // Abgabefrist Monatsbericht: Tag im Folgemonat
+  AUDIO_AUFBEWAHRUNG: 'AUDIO_AUFBEWAHRUNG', // Voice-Diktat: SOFORT_LOESCHEN | TAGE_30 | BEHALTEN
 } as const;
 
 export const EINSTELLUNG_DEFAULTS: Readonly<Record<string, string>> = {
@@ -141,6 +143,8 @@ export const EINSTELLUNG_DEFAULTS: Readonly<Record<string, string>> = {
   [EINSTELLUNG_KEYS.POSTINGTYPE_WHITELIST]: '', // leer = alle Typen
   [EINSTELLUNG_KEYS.IST_QUELLE]: 'SALES_FLASH',
   [EINSTELLUNG_KEYS.ABGLEICH_TOLERANZ_PROZENT]: '2',
+  [EINSTELLUNG_KEYS.REPORT_DEADLINE_TAG]: '10',
+  [EINSTELLUNG_KEYS.AUDIO_AUFBEWAHRUNG]: 'SOFORT_LOESCHEN',
 };
 
 // Erwartete Abnahme-Sollwerte des Ist-Erstimports (Ground-Truth, §16)

@@ -1,9 +1,11 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useLocale, useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Button, Card } from '@/components/ui';
+import { monKurz } from '@/lib/monate';
 
 interface Periode {
   id: string;
@@ -33,13 +35,15 @@ interface Matrix {
   zellen: Zelle[];
 }
 
-const MONATS_KURZ = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 const monatNr = (p: string) => Number(p.slice(5));
 const ek = (landId: string, e1Id: string, p: string) => `${landId}|${e1Id}|${p}`;
 // Anzeige in kEUR (Tausend EUR), ganzzahlig, mit Tausenderpunkt: 300.500 € -> "301", 1.209.500 € -> "1.210".
 const f0 = (v: number) => Math.round(v / 1000).toLocaleString('de-DE');
 
 export default function ForecastMonatlichPage() {
+  const t = useTranslations('forecastMonat');
+  const locale = useLocale();
+  const MONATS_KURZ = monKurz(locale);
   const { user } = useAuth();
   const qc = useQueryClient();
   const [sel, setSel] = useState<{ periode: string; regionCode: string } | null>(null);
@@ -177,15 +181,12 @@ export default function ForecastMonatlichPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-ez-primary">Forecast — Monatssicht (Produktgruppe / Land)</h1>
-      <p className="text-sm text-gray-500">
-        Abgeschlossene Monate = <b>Actual</b> (realisierte Umsätze), offene Monate = <b>Forecast</b> (aus Budget vorbelegt,
-        überschreibbar). Werte in <b>kEUR</b> (Tausend EUR). Bei Monatsabweichung &gt; {schwelle} % gegenüber Budget ist eine Begründung Pflicht.
-      </p>
+      <h1 className="text-2xl font-bold text-ez-primary">{t('titel')}</h1>
+      <p className="text-sm text-gray-500">{t.rich('beschreibung', { schwelle, b: (chunks) => <b>{chunks}</b> })}</p>
 
       {perioden && perioden.length === 0 && (
         <Card>
-          <p className="text-gray-600">Es ist noch keine Forecast-Periode geöffnet.</p>
+          <p className="text-gray-600">{t('keinePeriode')}</p>
         </Card>
       )}
 
@@ -213,11 +214,11 @@ export default function ForecastMonatlichPage() {
                 {matrix.regionCode} · {matrix.periode}
               </span>
               <span className="ml-2 rounded bg-gray-100 px-2 py-0.5 text-xs">{matrix.status}</span>
-              <span className="ml-2 text-xs text-gray-400">Monats-Schwellwert {schwelle} %</span>
+              <span className="ml-2 text-xs text-gray-400">{t('monatsSchwellwert', { schwelle })}</span>
             </div>
             {matrix.status === 'OFFEN' && user?.rolle === 'AGM' && Object.keys(edits).length === 0 && (
               <Button onClick={() => bestaetigen.mutate()} disabled={bestaetigen.isPending}>
-                {bestaetigen.isPending ? 'Bestätige…' : 'Unverändert bestätigen (1 Klick)'}
+                {bestaetigen.isPending ? t('bestaetigt') : t('bestaetigen')}
               </Button>
             )}
           </div>
@@ -228,31 +229,31 @@ export default function ForecastMonatlichPage() {
                 <tr className="text-gray-600">
                   <th className="sticky left-0 z-10 bg-white" colSpan={2} />
                   <th colSpan={istMonate.length + 1} className="border border-gray-300 bg-gray-100 p-1 text-center font-semibold">
-                    Actual
+                    {t('actual')}
                   </th>
                   <th colSpan={fcMonate.length + 1} className="border border-gray-300 bg-yellow-50 p-1 text-center font-semibold">
-                    Forecast
+                    {t('forecast')}
                   </th>
                   <th colSpan={5} className="border border-gray-300 bg-purple-50 p-1 text-center font-semibold">
-                    FY 20{jj}
+                    {t('fy', { jj })}
                   </th>
                 </tr>
                 <tr className="bg-gray-50 text-gray-500">
-                  <th className="sticky left-0 z-10 w-[110px] bg-gray-50 p-1 text-left">Produktgruppe</th>
+                  <th className="sticky left-0 z-10 w-[110px] bg-gray-50 p-1 text-left">{t('spalteProduktgruppe')}</th>
                   <th className="sticky left-[110px] z-10 w-[110px] bg-gray-50 p-1 text-left">{matrix.regionCode}</th>
                   {istMonate.map((p) => (
                     <th key={p} className="border-l border-gray-200 p-1 text-right">{`${MONATS_KURZ[monatNr(p) - 1]}. ${jj}`}</th>
                   ))}
-                  <th className="border-l border-gray-300 bg-gray-100 p-1 text-right font-semibold">∑ Actual</th>
+                  <th className="border-l border-gray-300 bg-gray-100 p-1 text-right font-semibold">{t('sumActual')}</th>
                   {fcMonate.map((p) => (
                     <th key={p} className="border-l border-gray-200 bg-yellow-50 p-1 text-right">{`${MONATS_KURZ[monatNr(p) - 1]}. ${jj}`}</th>
                   ))}
-                  <th className="border-l border-gray-300 bg-yellow-100 p-1 text-right font-semibold">∑ Forecast</th>
-                  <th className="border-l border-gray-300 bg-purple-50 p-1 text-right">BUD</th>
-                  <th className="p-1 text-right">Actual+BUD</th>
-                  <th className="p-1 text-right">Actual+FC</th>
-                  <th className="p-1 text-right">ΔBud/Act+Bud</th>
-                  <th className="p-1 text-right">ΔBud/Act+FC</th>
+                  <th className="border-l border-gray-300 bg-yellow-100 p-1 text-right font-semibold">{t('sumForecast')}</th>
+                  <th className="border-l border-gray-300 bg-purple-50 p-1 text-right">{t('bud')}</th>
+                  <th className="p-1 text-right">{t('actualBud')}</th>
+                  <th className="p-1 text-right">{t('actualFc')}</th>
+                  <th className="p-1 text-right">{t('deltaBudActBud')}</th>
+                  <th className="p-1 text-right">{t('deltaBudActFc')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -307,7 +308,7 @@ export default function ForecastMonatlichPage() {
                 })}
                 <tr className="border-t-2 border-gray-400 bg-gray-50 font-bold">
                   <td className="sticky left-0 z-10 bg-gray-50 p-1" colSpan={2}>
-                    Summe {matrix.regionCode}
+                    {t('summe', { region: matrix.regionCode })}
                   </td>
                   {istMonate.map((p) => (
                     <td key={p} className="border-l border-gray-200 p-1 text-right">{f0(totals.ist[p])}</td>
@@ -330,9 +331,7 @@ export default function ForecastMonatlichPage() {
           {editierbar && editierteZellen.size > 0 && (
             <div className="space-y-2 rounded border border-ez-primary/30 bg-ez-primary/5 p-3">
               {fehlendeBegruendungen.length > 0 && (
-                <p className="text-sm font-medium text-ez-ampelRot">
-                  Begründung erforderlich für {fehlendeBegruendungen.length} Monat(e) mit Abweichung &gt; {schwelle} %.
-                </p>
+                <p className="text-sm font-medium text-ez-ampelRot">{t('begruendungNoetig', { anzahl: fehlendeBegruendungen.length, schwelle })}</p>
               )}
               {zeilen
                 .filter(({ z }) => editierteZellen.has(`${z.landId}|${z.e1Id}`))
@@ -347,7 +346,7 @@ export default function ForecastMonatlichPage() {
                         </span>
                         <input
                           className={`flex-1 rounded border px-2 py-1 text-sm focus:outline-none ${val.trim() ? 'border-gray-300' : 'border-ez-ampelRot'}`}
-                          placeholder="Begründung der Abweichung (Pflicht)…"
+                          placeholder={t('begruendungPlaceholder')}
                           value={val}
                           onChange={(e) => setComments({ ...comments, [key]: e.target.value })}
                         />
@@ -358,7 +357,7 @@ export default function ForecastMonatlichPage() {
               {anpassen.isError && <p className="text-sm text-ez-accent">{(anpassen.error as Error).message}</p>}
               <div className="flex gap-2 pt-1">
                 <Button onClick={() => anpassen.mutate()} disabled={anpassen.isPending || fehlendeBegruendungen.length > 0}>
-                  {anpassen.isPending ? 'Speichere…' : `${editierteZellen.size} Zelle(n) speichern`}
+                  {anpassen.isPending ? t('speichert') : t('speichern', { anzahl: editierteZellen.size })}
                 </Button>
                 <Button
                   variant="ghost"
@@ -367,7 +366,7 @@ export default function ForecastMonatlichPage() {
                     setComments({});
                   }}
                 >
-                  Verwerfen
+                  {t('verwerfen')}
                 </Button>
               </div>
             </div>

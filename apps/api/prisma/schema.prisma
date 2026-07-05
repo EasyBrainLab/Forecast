@@ -223,6 +223,7 @@ model ProduktgruppeE1 {
   budgets           Budget[]
   budgetAenderungen BudgetAenderung[]
   forecastVersionen ForecastVersion[]
+  reportEintraege   ReportEintrag[]
 
   @@map("produktgruppe_e1")
 }
@@ -444,17 +445,18 @@ model ImportBatch {
 }
 
 model ImportQuarantaene {
-  id            String            @id @default(uuid())
-  importBatchId String
-  zeilenNummer  Int
-  recid         String?
-  rohdaten      Json
-  grund         QuarantaeneGrund
-  detail        String?
-  status        QuarantaeneStatus @default(OFFEN)
-  geklaertVonId String?
-  geklaertAm    DateTime?
-  erstelltAm    DateTime          @default(now())
+  id             String            @id @default(uuid())
+  importBatchId  String
+  zeilenNummer   Int
+  recid          String?
+  rohdaten       Json
+  grund          QuarantaeneGrund
+  detail         String?
+  status         QuarantaeneStatus @default(OFFEN)
+  geklaertVonId  String?
+  geklaertAm     DateTime?
+  klaerKommentar String?
+  erstelltAm     DateTime          @default(now())
 
   importBatch ImportBatch @relation(fields: [importBatchId], references: [id])
 
@@ -672,7 +674,8 @@ model Tender {
   erstelltAm           DateTime     @default(now())
   aktualisiertAm       DateTime     @updatedAt
 
-  lose TenderLos[]
+  lose            TenderLos[]
+  reportEintraege ReportEintrag[]
 
   @@index([status])
   @@index([abgabefrist])
@@ -703,6 +706,8 @@ model Competitor {
   sortierung     Int      @default(0)
   erstelltAm     DateTime @default(now())
   aktualisiertAm DateTime @updatedAt
+
+  reportEintraege ReportEintrag[]
 
   @@index([aktiv])
   @@map("competitor")
@@ -736,7 +741,144 @@ model CustomerSite {
   erstelltAm     DateTime           @default(now())
   aktualisiertAm DateTime           @updatedAt
 
+  reportEintraege ReportEintrag[]
+
   @@index([regionCode])
   @@index([status])
   @@map("customer_site")
+}
+
+// ─────────────── MONATSBERICHT VERTRIEB (ersetzt P12F055-Word-Formular; Abschnitte als typisierte Einträge) ───────────────
+enum ReportStatus {
+  ENTWURF
+  IN_PRUEFUNG_KI
+  EINGEREICHT
+  GELESEN
+}
+
+enum ReportAbschnitt {
+  KRITISCH
+  IMPLANTATION
+  AKTIVITAET_NEUKUNDE
+  AKTIVITAET_BESTAND
+  MARKETING
+  PROJEKT
+  NAECHSTE_AKTIVITAET
+  WETTBEWERB
+}
+
+model MonthlyReport {
+  id         String       @id @default(uuid())
+  periode    String // "JJJJ-MM" (Berichtsmonat)
+  jahr       Int
+  monat      Int
+  regionCode String
+  userId     String? // letzter Bearbeiter (AGM)
+  userName   String? // denormalisiert (Anzeige ohne Join)
+  status     ReportStatus @default(ENTWURF)
+
+  // Abschnitt 5 (Pflicht beim Einreichen): Ausblick des Reps
+  forecastFolgemonatEur Decimal? @db.Decimal(15, 2)
+  forecastQuartalEur    Decimal? @db.Decimal(15, 2)
+
+  // Abschnitt 7: explizite "keine Veränderung"-Erklärung als Alternative zu Einträgen
+  wettbewerbKeineAenderung Boolean @default(false)
+
+  // Abschnitt 8 (optional): Freitexte
+  marktAllgemein String?
+  personal       String?
+  sonstiges      String?
+
+  eingereichtAm DateTime?
+  gelesenAm     DateTime?
+  gelesenVon    String? // E-Mail des Managers (Lesebestätigung)
+
+  erstelltAm     DateTime @default(now())
+  aktualisiertAm DateTime @updatedAt
+
+  eintraege ReportEintrag[]
+
+  @@unique([periode, regionCode])
+  @@index([status])
+  @@index([jahr, monat])
+  @@map("monthly_report")
+}
+
+model ReportEintrag {
+  id        String          @id @default(uuid())
+  reportId  String
+  abschnitt ReportAbschnitt
+  typ       String? // KRITISCH: TENDER/KUNDENVERLUST/NEUKUNDE/PRODUKTPROBLEM/LIEFERPROBLEM/SONSTIGES · AKTIVITAET_*: BESUCH/TRAINING/MEETING/SUPPORT
+
+  customerSiteId String?
+  competitorId   String?
+  tenderId       String?
+  e1Id           String? // Produktlinien-Bezug (z. B. kritisches Thema je Produktlinie)
+
+  datum        DateTime?
+  beschreibung String
+  ergebnis     String?
+
+  // Projekt (Abschnitt 5 Projektliste)
+  landIso             String?
+  stadt               String?
+  erwarteterUmsatzEur Decimal? @db.Decimal(15, 2)
+  wahrscheinlichkeit  Int? // 0..100 %
+
+  // Marketing
+  kostenEur Decimal? @db.Decimal(15, 2)
+
+  // Implantationen je Standort
+  menge Decimal? @db.Decimal(15, 2)
+
+  // Wettbewerb
+  preisInfo String?
+
+  sortierung Int      @default(0)
+  erstelltAm DateTime @default(now())
+
+  report       MonthlyReport   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  customerSite CustomerSite?   @relation(fields: [customerSiteId], references: [id], onDelete: SetNull)
+  competitor   Competitor?     @relation(fields: [competitorId], references: [id], onDelete: SetNull)
+  tender       Tender?         @relation(fields: [tenderId], references: [id], onDelete: SetNull)
+  e1           ProduktgruppeE1? @relation(fields: [e1Id], references: [id])
+
+  @@index([reportId])
+  @@index([abschnitt])
+  @@index([customerSiteId])
+  @@index([tenderId])
+  @@map("report_eintrag")
+}
+
+// ─────────────── VOICE-DIKTAT (Audio -> STT -> LLM-Extraktion; Zahlen-Guardrail; Audit der KI-Erfassung) ───────────────
+enum VoiceStatus {
+  TRANSKRIBIERT
+  EXTRAHIERT
+  BESTAETIGT
+  VERWORFEN
+}
+
+model VoiceSession {
+  id            String      @id @default(uuid())
+  periode       String // "JJJJ-MM" (Berichtsmonat, dem das Diktat gilt)
+  regionCode    String
+  userId        String
+  userEmail     String // denormalisiert (Audit)
+  sprache       String? // erkannte/gesetzte Sprache (de/en/es/pt/fr)
+  status        VoiceStatus @default(TRANSKRIBIERT)
+  audio         Bytes? // Rohaufnahme; null nach Löschung gemäß AUDIO_AUFBEWAHRUNG
+  audioMimeType String?
+  audioGroesse  Int         @default(0)
+  transkript    String // STT-Ergebnis (bleibt als Quelle/Audit erhalten)
+  extraktion    Json? // strukturiertes LLM-Ergebnis inkl. Zahlen-Guardrail-Liste
+  sttProvider   String?
+  llmModell     String?
+  bestaetigtAm  DateTime?
+  erstelltAm    DateTime    @default(now())
+  aktualisiertAm DateTime   @updatedAt
+
+  @@index([periode, regionCode])
+  @@index([status])
+  @@index([erstelltAm])
+  @@map("voice_session")
 }

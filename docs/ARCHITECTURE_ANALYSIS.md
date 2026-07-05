@@ -201,6 +201,45 @@ Rundet die Tender-Wettbewerbsangabe ab („aus Stammliste statt Freitext", Auftr
 - **Verifikation:** Typecheck grün · CI-Guards grün · `shared` 100 % (90 Tests) · `verify:customer-site`
   (**14 Assertions**: CRUD, Scoping, Status-Workflow, Whitelist, Fuzzy-Vorschläge, Zuordnen neu/bestehend/idempotent).
 
+### Rollout-Sprint (fertig, verifiziert · 2026-07-05) — Etappen Q, I, R4, V, H
+Auftrag: „komplett fertige Anwendung, sofort ans Salesteam ausrollbar" (Nutzer-Entscheid: Reihenfolge
+Quick-Wins → i18n → R4 → Voice; KI-Datenschutz: Claude API mit AVV/EU akzeptiert).
+
+- **Q — Quick-Wins:** Export-Center `/export` (Backend existierte, UI fehlte) · Absatz-Import gehärtet
+  (Summen-/Leer-/Nullzeilen mit Grund aussortiert; Summentreue exakt gegen Realdatei; namenlose Mengen-Zeilen
+  als `(ohne Kundenname)` erhalten) · Quarantäne-Klär-UI `/admin/quarantaene` (klären/verwerfen + Kommentar).
+- **I — i18n DE/EN:** next-intl aktiviert (Cookie-Locale ohne URL-Routing, Umschalter im Header/Login).
+  AGM-Flows vollständig zweisprachig (Nav, Login, Einladung, Passwort, Übersicht, Forecast beide Sichten,
+  Tender, Absatz, Export, Report, Hilfe, Voice). Admin-/Controlling-Seiten bewusst DE. Laufzeit verifiziert
+  (`lang=de/en` + übersetzte Strings per Cookie).
+- **R4 — Monatsbericht:** `MonthlyReport` + `ReportEintrag` (FKs auf CustomerSite/Competitor/Tender/E1);
+  8 Abschnitte als typisierte Einträge; automatische Plan/Ist/Δ/YTD/PY-Zahlensektion je Produktlinie
+  (kein Abtippen); Pflichtprüfung beim Einreichen (Forecast Folgemonat+Quartal, Wettbewerb ≥1 aus Stammliste
+  ODER Keine-Änderung-Erklärung); Status ENTWURF→EINGEREICHT→GELESEN mit Lesebestätigung; Manager-Board
+  `/report-board` mit Überfälligkeit (Frist = `REPORT_DEADLINE_TAG` des Folgemonats); Scheduler Frist−3/Frist+1.
+  `/statement` bleibt als Altzugriff erreichbar, ist aus der Nav ersetzt. `verify:report`: 16 Assertions.
+- **V — Voice-Diktat (Stufe 2):** Audio → Whisper-STT → Claude-Extraktion (`claude-opus-4-8`, structured
+  outputs) → vorbefüllte Maske. **Zahlen-Guardrail:** jede extrahierte Zahl mit wörtlichem Transkript-Kontext,
+  Einzelbestätigung/Korrektur Pflicht vor Übernahme. Serverseitiges Stammdaten-Matching (Fuzzy Site, exakt
+  Competitor) als Vorschlag. `VoiceSession` (Transkript = Audit; Audio-Retention `AUDIO_AUFBEWAHRUNG`
+  SOFORT_LOESCHEN/TAGE_30/BEHALTEN + Retention-Job). Provider-Abstraktion mit Mocks; Feature-Detection
+  `/voice/status` — ohne ENV-Keys sauber deaktiviert, Maske voll nutzbar. `verify:voice`: 12 Assertions
+  (E2E mit Mock-STT, wie im Auftrag gefordert). Keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` (docs/secrets.md).
+- **H — Eingebettete Schulung:** `/hilfe` DE/EN — rollenbasierte Kapitel (Erste Schritte, Forecast,
+  Monatsbericht, Diktat inkl. Zahlen-Prüfung, Tender, Leitung, Administration, FAQ) + AGM-Schnellstart
+  („Monatsritual in 3 Schritten") für den Rollout ans Salesteam.
+
+Auftragsstatus damit: **MVP + Stufe 2 vollständig**; Stufe 3 (Vollständigkeits-Chatbot) und Stufe 4
+(Management-Summary/ERP) bleiben offen. Verify-Suite: `verify:ist|budget|budget-wf|forecast-wf|dashboard|
+export|absatz|erweiterungen|tender|customer-site|report|voice`.
+
+**Gesamtverifikation 2026-07-05:** shared 90 Tests/100 % Coverage · Typecheck 3/3 · CI-Guards ·
+`pnpm -r build` inkl. `next build` (24 Routen) · Verify-Suite 10/12 grün. **Bekannt/vorbestehend (auch auf
+main):** `verify:dashboard` und `verify:export` eichen feste YTD-Sollwerte auf das Juni-Fenster und schlagen
+seit Monatswechsel kalendarisch fehl — Branch berührt diese Services/Skripte nicht; empfohlener Folge-Fix:
+Stichtag im Test pinnen. Aufruf-Hinweis: Alt-Skripte erwarten `DATEN_DIR=<abs. Pfad>/docs`, die neueren
+(`absatz`, `erweiterungen`) `DATEN_DIR=<Repo-Root>`.
+
 ### Bewusste MVP-Annahmen (revidierbar)
 - **A-R1:** `customer_site` (R3) und `competitor` (R2) sind Entitäten, aber `Tender` referenziert sie noch nicht
   per FK — `Tender.krankenhaus` bleibt String, `Tender.wettbewerber` String[] (Namen). FK-Verknüpfung von

@@ -10,6 +10,8 @@ Alle Secrets ausschließlich per ENV (fail-fast: die API startet ohne gültige W
 | `SMTP_PASS` | Mailversand | vom Provider |
 | `DEPLOY_SSH_KEY` | CI-Deploy | dedizierter Deploy-Key |
 | `ADMIN_INITIAL_PASSWORD` | erster Admin-Login | stark, wird beim 1. Login gewechselt |
+| `ANTHROPIC_API_KEY` | KI-Extraktion Voice-Diktat (Claude API, AVV/EU) | Anthropic Console; optional — ohne Key ist Diktat deaktiviert |
+| `OPENAI_API_KEY` | Speech-to-Text (Whisper API) fürs Diktat | OpenAI Console; optional — ohne Key ist Diktat deaktiviert |
 
 **ENCRYPTION_KEY VOR Erstbetrieb offline sichern** (Passwortmanager/Tresor), **getrennt vom DB-Backup**.
 Ohne diesen Schlüssel sind ggf. verschlüsselte Daten nach einem Restore nicht lesbar.

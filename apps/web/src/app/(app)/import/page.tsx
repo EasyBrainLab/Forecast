@@ -21,6 +21,7 @@ interface Bericht {
   seedsGesamt?: number;
   seedsVorjahr?: number;
   zeilenImportiert?: number;
+  uebersprungeneZeilen?: { zeile: number; kunde: string; land: string; grund: string }[];
 }
 interface Uebersicht {
   ist: { zeilen: number; summeEur: number; jahre: { jahr: number; zeilen: number }[]; letzterImport: { dateiname: string; status: string; zeilenNeu: number; erstelltAm: string } | null };
@@ -121,18 +122,59 @@ function ImportKachel({ titel, beschreibung, endpoint, accept }: { titel: string
         <div className="space-y-2 rounded border border-ez-ampelGruen/40 bg-ez-ampelGruen/5 p-3 text-sm">
           <p className="font-semibold text-ez-ampelGruen">✓ Import erfolgreich verarbeitet</p>
           {b.seedsGesamt !== undefined ? (
-            <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-700 sm:grid-cols-3">
-              <li>Zeilen importiert: <strong>{eur(b.zeilenImportiert)}</strong></li>
-              <li>Seeds gesamt: <strong>{eur(b.seedsGesamt)}</strong></li>
-              <li>Seeds Vorjahr: <strong>{eur(b.seedsVorjahr)}</strong></li>
-            </ul>
+            <>
+              <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-700 sm:grid-cols-3">
+                <li>Zeilen importiert: <strong>{eur(b.zeilenImportiert)}</strong></li>
+                <li>Übersprungen: <strong>{eur(b.zeilenUebersprungen)}</strong></li>
+                <li>Seeds gesamt: <strong>{eur(b.seedsGesamt)}</strong></li>
+                <li>Seeds Vorjahr: <strong>{eur(b.seedsVorjahr)}</strong></li>
+              </ul>
+              {b.uebersprungeneZeilen && b.uebersprungeneZeilen.length > 0 && (
+                <details className="rounded border border-gray-200 bg-white p-2">
+                  <summary className="cursor-pointer text-xs font-medium text-gray-600">
+                    Aussortierte Zeilen anzeigen ({b.uebersprungeneZeilen.length}
+                    {(b.zeilenUebersprungen ?? 0) > b.uebersprungeneZeilen.length ? ` von ${b.zeilenUebersprungen}` : ''}) — Summen-/Leer-/Metazeilen werden nicht als Kunden übernommen
+                  </summary>
+                  <table className="mt-2 w-full text-xs">
+                    <thead className="text-left text-gray-500">
+                      <tr>
+                        <th className="py-0.5 pr-2">Zeile</th>
+                        <th className="py-0.5 pr-2">Kunde</th>
+                        <th className="py-0.5 pr-2">Land</th>
+                        <th className="py-0.5">Grund</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {b.uebersprungeneZeilen.map((z, i) => (
+                        <tr key={i} className="border-t border-gray-100">
+                          <td className="py-0.5 pr-2 tabular-nums">{z.zeile}</td>
+                          <td className="py-0.5 pr-2">{z.kunde}</td>
+                          <td className="py-0.5 pr-2">{z.land}</td>
+                          <td className="py-0.5 text-gray-600">{z.grund}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </details>
+              )}
+            </>
           ) : b.zeilenGesamt !== undefined ? (
             <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-700 sm:grid-cols-3">
               <li>Zeilen gesamt: <strong>{eur(b.zeilenGesamt)}</strong></li>
               <li>Neu: <strong>{eur(b.zeilenNeu)}</strong></li>
               <li>Aktualisiert: <strong>{eur(b.zeilenAktualisiert)}</strong></li>
               <li>Übersprungen: <strong>{eur(b.zeilenUebersprungen)}</strong></li>
-              <li>Quarantäne: <strong>{eur(b.zeilenQuarantaene)}</strong></li>
+              <li>
+                Quarantäne: <strong>{eur(b.zeilenQuarantaene)}</strong>
+                {(b.zeilenQuarantaene ?? 0) > 0 && (
+                  <>
+                    {' '}
+                    <Link href="/admin/quarantaene" className="text-ez-primary underline">
+                      → klären
+                    </Link>
+                  </>
+                )}
+              </li>
               <li>Σ Umsatz: <strong>{eur(b.summeGesamtEur)} €</strong></li>
             </ul>
           ) : (

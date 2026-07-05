@@ -1,17 +1,11 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Button, Card, Ampel, keur } from '@/components/ui';
 
-const STATUS_LABEL: Record<string, string> = {
-  BEOBACHTET: 'Beobachtet',
-  EINGEREICHT: 'Eingereicht',
-  GEWONNEN: 'Gewonnen',
-  VERLOREN: 'Verloren',
-  STORNIERT: 'Storniert',
-};
 const STATUS_REIHENFOLGE = ['BEOBACHTET', 'EINGEREICHT', 'GEWONNEN', 'VERLOREN', 'STORNIERT'];
 const ABGESCHLOSSEN = new Set(['GEWONNEN', 'VERLOREN', 'STORNIERT']);
 const TAG_MS = 24 * 60 * 60 * 1000;
@@ -66,14 +60,6 @@ function statusBadge(status: string): string {
     default:
       return 'bg-gray-100 text-gray-600';
   }
-}
-function dringlichkeit(t: Tender): { farbe: 'gruen' | 'gelb' | 'rot' | 'grau'; text: string } {
-  if (ABGESCHLOSSEN.has(t.status)) return { farbe: 'grau', text: STATUS_LABEL[t.status] };
-  const r = resttage(t.abgabefrist);
-  if (r < 0) return { farbe: 'rot', text: `überfällig (${Math.abs(r)} T)` };
-  if (r <= 7) return { farbe: 'rot', text: `noch ${r} T` };
-  if (r <= 30) return { farbe: 'gelb', text: `noch ${r} T` };
-  return { farbe: 'gruen', text: `noch ${r} T` };
 }
 
 type LosDraft = { bezeichnung: string; volumenEur: string; menge: string };
@@ -136,6 +122,8 @@ function Textfeld({ label, value, onChange, type = 'text', placeholder }: { labe
 }
 
 function TenderForm({ bearbeiten, regionen, competitor, istAgm, onFertig, onAbbrechen }: { bearbeiten: Tender | null; regionen: Region[]; competitor: Competitor[]; istAgm: boolean; onFertig: () => void; onAbbrechen: () => void }) {
+  const t = useTranslations('tender');
+  const tc = useTranslations('common');
   const [d, setD] = useState<Draft>(bearbeiten ? ausTender(bearbeiten) : leererDraft());
   const [fehler, setFehler] = useState('');
   const [busy, setBusy] = useState(false);
@@ -154,10 +142,10 @@ function TenderForm({ bearbeiten, regionen, competitor, istAgm, onFertig, onAbbr
 
   const speichern = async () => {
     setFehler('');
-    if (!d.referenznummer.trim()) return setFehler('Referenznummer ist erforderlich.');
-    if (!d.krankenhaus.trim()) return setFehler('Krankenhaus/Standort ist erforderlich.');
-    if (!d.abgabefrist) return setFehler('Abgabefrist ist erforderlich.');
-    if (istAgm && !d.regionCode) return setFehler('Bitte eine Region zuordnen.');
+    if (!d.referenznummer.trim()) return setFehler(t('pflichtReferenz'));
+    if (!d.krankenhaus.trim()) return setFehler(t('pflichtKrankenhaus'));
+    if (!d.abgabefrist) return setFehler(t('pflichtFrist'));
+    if (istAgm && !d.regionCode) return setFehler(t('pflichtRegion'));
     const zahl = (s: string): number | null => (s.trim() ? Number(s.replace(',', '.')) : null);
     const payload = {
       referenznummer: d.referenznummer.trim(),
@@ -179,7 +167,7 @@ function TenderForm({ bearbeiten, regionen, competitor, istAgm, onFertig, onAbbr
       else await api.post('/tender', payload);
       onFertig();
     } catch (e) {
-      setFehler(e instanceof ApiError ? e.message : 'Speichern fehlgeschlagen.');
+      setFehler(e instanceof ApiError ? e.message : t('speichernFehler'));
     } finally {
       setBusy(false);
     }
@@ -187,16 +175,18 @@ function TenderForm({ bearbeiten, regionen, competitor, istAgm, onFertig, onAbbr
 
   return (
     <Card className="space-y-3 border-ez-primary/40">
-      <h3 className="font-semibold text-ez-primary">{bearbeiten ? 'Ausschreibung bearbeiten' : 'Neue Ausschreibung'}</h3>
+      <h3 className="font-semibold text-ez-primary">{bearbeiten ? t('formTitelBearbeiten') : t('formTitelNeu')}</h3>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Textfeld label="Referenznummer *" value={d.referenznummer} onChange={(v) => upd({ referenznummer: v })} placeholder="z. B. ES-2026-0815" />
-        <Textfeld label="Krankenhaus / Standort *" value={d.krankenhaus} onChange={(v) => upd({ krankenhaus: v })} />
-        <Textfeld label="Stadt" value={d.stadt} onChange={(v) => upd({ stadt: v })} />
-        <Textfeld label="Land (ISO, z. B. ES)" value={d.landIso} onChange={(v) => upd({ landIso: v.toUpperCase() })} />
+        <Textfeld label={t('referenznummer')} value={d.referenznummer} onChange={(v) => upd({ referenznummer: v })} placeholder="ES-2026-0815" />
+        <Textfeld label={t('krankenhaus')} value={d.krankenhaus} onChange={(v) => upd({ krankenhaus: v })} />
+        <Textfeld label={t('stadt')} value={d.stadt} onChange={(v) => upd({ stadt: v })} />
+        <Textfeld label={t('landIso')} value={d.landIso} onChange={(v) => upd({ landIso: v.toUpperCase() })} />
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Region {istAgm ? '*' : ''}</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700">
+            {t('region')} {istAgm ? '*' : ''}
+          </label>
           <select className="w-full rounded border border-gray-300 px-3 py-2 text-sm" value={d.regionCode} onChange={(e) => upd({ regionCode: e.target.value })}>
-            <option value="">— keine —</option>
+            <option value="">{t('keineRegion')}</option>
             {regionen.map((r) => (
               <option key={r.code} value={r.code}>
                 {r.code} · {r.bezeichnung}
@@ -205,16 +195,16 @@ function TenderForm({ bearbeiten, regionen, competitor, istAgm, onFertig, onAbbr
           </select>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Textfeld label="Veröffentlicht am" type="date" value={d.veroeffentlichtAm} onChange={(v) => upd({ veroeffentlichtAm: v })} />
-          <Textfeld label="Abgabefrist *" type="date" value={d.abgabefrist} onChange={(v) => upd({ abgabefrist: v })} />
+          <Textfeld label={t('veroeffentlicht')} type="date" value={d.veroeffentlichtAm} onChange={(v) => upd({ veroeffentlichtAm: v })} />
+          <Textfeld label={t('abgabefrist')} type="date" value={d.abgabefrist} onChange={(v) => upd({ abgabefrist: v })} />
         </div>
-        <Textfeld label="Eigener Preis / Einheit (EUR)" value={d.eigenerPreisEur} onChange={(v) => upd({ eigenerPreisEur: v })} />
-        <Textfeld label="Wettbewerbspreis / Einheit (EUR)" value={d.wettbewerbPreisEur} onChange={(v) => upd({ wettbewerbPreisEur: v })} />
+        <Textfeld label={t('preisEigen')} value={d.eigenerPreisEur} onChange={(v) => upd({ eigenerPreisEur: v })} />
+        <Textfeld label={t('preisWettbewerb')} value={d.wettbewerbPreisEur} onChange={(v) => upd({ wettbewerbPreisEur: v })} />
       </div>
       <div>
-        <label className="mb-1 block text-sm font-medium text-gray-700">Wettbewerber (aus Stammliste)</label>
+        <label className="mb-1 block text-sm font-medium text-gray-700">{t('wettbewerber')}</label>
         {wbNamen.length === 0 ? (
-          <p className="text-xs text-gray-400">Keine Wettbewerber gepflegt — bitte unter „Wettbewerber" (Admin) anlegen.</p>
+          <p className="text-xs text-gray-400">{t('wettbewerberLeer')}</p>
         ) : (
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             {wbNamen.map((n) => (
@@ -231,24 +221,24 @@ function TenderForm({ bearbeiten, regionen, competitor, istAgm, onFertig, onAbbr
         )}
       </div>
       <div>
-        <label className="mb-1 block text-sm font-medium text-gray-700">Notiz</label>
+        <label className="mb-1 block text-sm font-medium text-gray-700">{t('notiz')}</label>
         <textarea className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-ez-primary focus:outline-none" rows={2} value={d.notiz} onChange={(e) => upd({ notiz: e.target.value })} />
       </div>
 
       <div>
         <div className="mb-1 flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-700">Lose</span>
+          <span className="text-sm font-medium text-gray-700">{t('lose')}</span>
           <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => upd({ lose: [...d.lose, { bezeichnung: '', volumenEur: '', menge: '' }] })}>
-            + Los
+            {t('losHinzufuegen')}
           </Button>
         </div>
-        {d.lose.length === 0 && <p className="text-xs text-gray-400">Keine Lose erfasst.</p>}
+        {d.lose.length === 0 && <p className="text-xs text-gray-400">{t('keineLose')}</p>}
         <div className="space-y-2">
           {d.lose.map((l, i) => (
             <div key={i} className="flex flex-wrap items-center gap-2">
-              <input className="min-w-[180px] flex-1 rounded border border-gray-300 px-2 py-1 text-sm" placeholder="Bezeichnung" value={l.bezeichnung} onChange={(e) => setLos(i, { bezeichnung: e.target.value })} />
-              <input className="w-32 rounded border border-gray-300 px-2 py-1 text-sm" placeholder="Volumen EUR" value={l.volumenEur} onChange={(e) => setLos(i, { volumenEur: e.target.value })} />
-              <input className="w-24 rounded border border-gray-300 px-2 py-1 text-sm" placeholder="Menge" value={l.menge} onChange={(e) => setLos(i, { menge: e.target.value })} />
+              <input className="min-w-[180px] flex-1 rounded border border-gray-300 px-2 py-1 text-sm" placeholder={t('losBezeichnung')} value={l.bezeichnung} onChange={(e) => setLos(i, { bezeichnung: e.target.value })} />
+              <input className="w-32 rounded border border-gray-300 px-2 py-1 text-sm" placeholder={t('losVolumen')} value={l.volumenEur} onChange={(e) => setLos(i, { volumenEur: e.target.value })} />
+              <input className="w-24 rounded border border-gray-300 px-2 py-1 text-sm" placeholder={t('losMenge')} value={l.menge} onChange={(e) => setLos(i, { menge: e.target.value })} />
               <button className="text-xs text-ez-accent" onClick={() => upd({ lose: d.lose.filter((_, j) => j !== i) })}>
                 ✕
               </button>
@@ -260,38 +250,43 @@ function TenderForm({ bearbeiten, regionen, competitor, istAgm, onFertig, onAbbr
       {fehler && <p className="rounded bg-ez-accent/10 p-2 text-sm text-ez-accent">{fehler}</p>}
       <div className="flex gap-2">
         <Button onClick={speichern} disabled={busy}>
-          {busy ? 'Speichert…' : bearbeiten ? 'Änderungen speichern' : 'Ausschreibung anlegen'}
+          {busy ? t('speichert') : bearbeiten ? t('aenderungenSpeichern') : t('anlegen')}
         </Button>
         <Button variant="ghost" onClick={onAbbrechen}>
-          Abbrechen
+          {tc('abbrechen')}
         </Button>
       </div>
     </Card>
   );
 }
 
-function TenderCard({ t, darfBearbeiten, darfLoeschen, onBearbeiten, onReload }: { t: Tender; darfBearbeiten: boolean; darfLoeschen: boolean; onBearbeiten: (t: Tender) => void; onReload: () => void }) {
+function TenderCard({ t: tender, darfBearbeiten, darfLoeschen, onBearbeiten, onReload }: { t: Tender; darfBearbeiten: boolean; darfLoeschen: boolean; onBearbeiten: (t: Tender) => void; onReload: () => void }) {
+  const t = useTranslations('tender');
+  const tc = useTranslations('common');
   const [fehler, setFehler] = useState('');
-  const dr = dringlichkeit(t);
-  const volumen = t.lose.reduce((sum, l) => sum + (l.volumenEur ?? 0), 0);
+  const abgeschlossen = ABGESCHLOSSEN.has(tender.status);
+  const rest = resttage(tender.abgabefrist);
+  const farbe: 'gruen' | 'gelb' | 'rot' | 'grau' = abgeschlossen ? 'grau' : rest <= 7 ? 'rot' : rest <= 30 ? 'gelb' : 'gruen';
+  const dringText = abgeschlossen ? t(`statusLabel.${tender.status}`) : rest < 0 ? t('ueberfaellig', { tage: Math.abs(rest) }) : t('nochTage', { tage: rest });
+  const volumen = tender.lose.reduce((sum, l) => sum + (l.volumenEur ?? 0), 0);
 
   const statusSetzen = async (status: string) => {
     setFehler('');
     try {
-      await api.post(`/tender/${t.id}/status`, { status });
+      await api.post(`/tender/${tender.id}/status`, { status });
       onReload();
     } catch (e) {
-      setFehler(e instanceof ApiError ? e.message : 'Fehler.');
+      setFehler(e instanceof ApiError ? e.message : tc('fehler'));
     }
   };
   const loeschen = async () => {
-    if (!window.confirm(`Ausschreibung „${t.referenznummer}" wirklich löschen?`)) return;
+    if (!window.confirm(t('loeschenBestaetigung', { ref: tender.referenznummer }))) return;
     setFehler('');
     try {
-      await api.del(`/tender/${t.id}`);
+      await api.del(`/tender/${tender.id}`);
       onReload();
     } catch (e) {
-      setFehler(e instanceof ApiError ? e.message : 'Fehler.');
+      setFehler(e instanceof ApiError ? e.message : tc('fehler'));
     }
   };
 
@@ -299,62 +294,64 @@ function TenderCard({ t, darfBearbeiten, darfLoeschen, onBearbeiten, onReload }:
     <Card className="space-y-2">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Ampel farbe={dr.farbe} />
+          <Ampel farbe={farbe} />
           <div>
-            <div className="font-semibold text-ez-primary">{t.referenznummer}</div>
+            <div className="font-semibold text-ez-primary">{tender.referenznummer}</div>
             <div className="text-sm text-gray-600">
-              {t.krankenhaus}
-              {t.stadt ? `, ${t.stadt}` : ''}
-              {t.landIso ? ` (${t.landIso})` : ''}
-              {t.regionCode ? ` · ${t.regionCode}` : ''}
+              {tender.krankenhaus}
+              {tender.stadt ? `, ${tender.stadt}` : ''}
+              {tender.landIso ? ` (${tender.landIso})` : ''}
+              {tender.regionCode ? ` · ${tender.regionCode}` : ''}
             </div>
           </div>
         </div>
         <div className="text-right">
-          <span className={`rounded px-2 py-0.5 text-xs ${statusBadge(t.status)}`}>{STATUS_LABEL[t.status] ?? t.status}</span>
-          <div className={`mt-1 text-xs ${dr.farbe === 'rot' ? 'text-ez-accent' : 'text-gray-500'}`}>
-            Frist {new Date(t.abgabefrist).toLocaleDateString('de-DE')} · {dr.text}
+          <span className={`rounded px-2 py-0.5 text-xs ${statusBadge(tender.status)}`}>{t(`statusLabel.${tender.status}`)}</span>
+          <div className={`mt-1 text-xs ${farbe === 'rot' ? 'text-ez-accent' : 'text-gray-500'}`}>
+            {t('frist', { datum: new Date(tender.abgabefrist).toLocaleDateString('de-DE') })} · {dringText}
           </div>
         </div>
       </div>
 
-      {(t.lose.length > 0 || t.wettbewerber.length > 0 || t.eigenerPreisEur != null) && (
+      {(tender.lose.length > 0 || tender.wettbewerber.length > 0 || tender.eigenerPreisEur != null) && (
         <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-600">
-          {t.lose.length > 0 && (
+          {tender.lose.length > 0 && (
             <span>
-              {t.lose.length} Los(e){volumen > 0 ? ` · Σ ${keur(volumen)} kEUR` : ''}
+              {t('loseZusammenfassung', { anzahl: tender.lose.length })}
+              {volumen > 0 ? ` · Σ ${keur(volumen)} kEUR` : ''}
             </span>
           )}
-          {t.wettbewerber.length > 0 && <span>Wettbewerb: {t.wettbewerber.join(', ')}</span>}
-          {t.eigenerPreisEur != null && (
+          {tender.wettbewerber.length > 0 && <span>{tender.wettbewerber.join(', ')}</span>}
+          {tender.eigenerPreisEur != null && (
             <span>
-              Preis eigen {t.eigenerPreisEur.toLocaleString('de-DE')} €{t.wettbewerbPreisEur != null ? ` vs. ${t.wettbewerbPreisEur.toLocaleString('de-DE')} €` : ''}
+              {t('preisVergleich', { eigen: tender.eigenerPreisEur.toLocaleString('de-DE') })}
+              {tender.wettbewerbPreisEur != null ? ` vs. ${tender.wettbewerbPreisEur.toLocaleString('de-DE')} €` : ''}
             </span>
           )}
         </div>
       )}
-      {t.notiz && <p className="text-sm text-gray-600">{t.notiz}</p>}
+      {tender.notiz && <p className="text-sm text-gray-600">{tender.notiz}</p>}
 
       {(darfBearbeiten || darfLoeschen) && (
         <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-2">
-          {darfBearbeiten && !ABGESCHLOSSEN.has(t.status) && (
+          {darfBearbeiten && !abgeschlossen && (
             <select className="rounded border border-gray-300 px-2 py-1 text-xs" value="" onChange={(e) => e.target.value && statusSetzen(e.target.value)}>
-              <option value="">Status ändern…</option>
-              {STATUS_REIHENFOLGE.filter((s) => s !== t.status).map((s) => (
+              <option value="">{t('statusAendern')}</option>
+              {STATUS_REIHENFOLGE.filter((s) => s !== tender.status).map((s) => (
                 <option key={s} value={s}>
-                  → {STATUS_LABEL[s]}
+                  → {t(`statusLabel.${s}`)}
                 </option>
               ))}
             </select>
           )}
           {darfBearbeiten && (
-            <button className="text-xs text-ez-primary hover:underline" onClick={() => onBearbeiten(t)}>
-              Bearbeiten
+            <button className="text-xs text-ez-primary hover:underline" onClick={() => onBearbeiten(tender)}>
+              {tc('bearbeiten')}
             </button>
           )}
           {darfLoeschen && (
             <button className="text-xs text-ez-accent hover:underline" onClick={loeschen}>
-              Löschen
+              {tc('loeschen')}
             </button>
           )}
           {fehler && <span className="text-xs text-ez-accent">{fehler}</span>}
@@ -365,6 +362,8 @@ function TenderCard({ t, darfBearbeiten, darfLoeschen, onBearbeiten, onReload }:
 }
 
 export default function TenderPage() {
+  const t = useTranslations('tender');
+  const tc = useTranslations('common');
   const { user } = useAuth();
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('');
@@ -390,8 +389,8 @@ export default function TenderPage() {
     setBearbeiten(null);
     setFormOffen(true);
   };
-  const oeffnenBearbeiten = (t: Tender) => {
-    setBearbeiten(t);
+  const oeffnenBearbeiten = (tn: Tender) => {
+    setBearbeiten(tn);
     setFormOffen(true);
   };
   const schliessen = () => {
@@ -399,39 +398,39 @@ export default function TenderPage() {
     setBearbeiten(null);
   };
 
-  const offeneCount = (tender ?? []).filter((t) => !ABGESCHLOSSEN.has(t.status)).length;
+  const offeneCount = (tender ?? []).filter((tn) => !ABGESCHLOSSEN.has(tn.status)).length;
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-ez-primary">Ausschreibungen / Tender</h1>
-          <p className="text-sm text-gray-500">Öffentliche Ausschreibungen mit Fristen und Status. {offeneCount} offen. Erinnerungen an die zuständige Region 14/7/3/1 Tage vor Frist.</p>
+          <h1 className="text-2xl font-bold text-ez-primary">{t('titel')}</h1>
+          <p className="text-sm text-gray-500">{t('beschreibung', { anzahl: offeneCount })}</p>
         </div>
         <div className="flex items-center gap-2">
           <select className="rounded border border-gray-300 px-2 py-1 text-sm" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="">Alle Status</option>
+            <option value="">{t('alleStatus')}</option>
             {STATUS_REIHENFOLGE.map((s) => (
               <option key={s} value={s}>
-                {STATUS_LABEL[s]}
+                {t(`statusLabel.${s}`)}
               </option>
             ))}
           </select>
-          {darfErstellen && !formOffen && <Button onClick={oeffnenNeu}>+ Neue Ausschreibung</Button>}
+          {darfErstellen && !formOffen && <Button onClick={oeffnenNeu}>{t('neu')}</Button>}
         </div>
       </div>
 
       {formOffen && <TenderForm bearbeiten={bearbeiten} regionen={formRegionen} competitor={competitor ?? []} istAgm={istAgm} onFertig={() => { schliessen(); reload(); }} onAbbrechen={schliessen} />}
 
-      {isLoading && <p className="text-gray-500">Lädt…</p>}
+      {isLoading && <p className="text-gray-500">{tc('laedt')}</p>}
       {tender && tender.length === 0 && (
         <Card>
-          <p className="text-gray-600">Keine Ausschreibungen erfasst{statusFilter ? ' (für diesen Status)' : ''}.</p>
+          <p className="text-gray-600">{t('keine', { filter: statusFilter ? 'ja' : 'nein' })}</p>
         </Card>
       )}
       <div className="space-y-3">
-        {(tender ?? []).map((t) => (
-          <TenderCard key={t.id} t={t} darfBearbeiten={darfErstellen} darfLoeschen={darfLoeschen} onBearbeiten={oeffnenBearbeiten} onReload={reload} />
+        {(tender ?? []).map((tn) => (
+          <TenderCard key={tn.id} t={tn} darfBearbeiten={darfErstellen} darfLoeschen={darfLoeschen} onBearbeiten={oeffnenBearbeiten} onReload={reload} />
         ))}
       </div>
     </div>
