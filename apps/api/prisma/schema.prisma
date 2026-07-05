@@ -849,3 +849,36 @@ model ReportEintrag {
   @@index([tenderId])
   @@map("report_eintrag")
 }
+
+// ─────────────── VOICE-DIKTAT (Audio -> STT -> LLM-Extraktion; Zahlen-Guardrail; Audit der KI-Erfassung) ───────────────
+enum VoiceStatus {
+  TRANSKRIBIERT
+  EXTRAHIERT
+  BESTAETIGT
+  VERWORFEN
+}
+
+model VoiceSession {
+  id            String      @id @default(uuid())
+  periode       String // "JJJJ-MM" (Berichtsmonat, dem das Diktat gilt)
+  regionCode    String
+  userId        String
+  userEmail     String // denormalisiert (Audit)
+  sprache       String? // erkannte/gesetzte Sprache (de/en/es/pt/fr)
+  status        VoiceStatus @default(TRANSKRIBIERT)
+  audio         Bytes? // Rohaufnahme; null nach Löschung gemäß AUDIO_AUFBEWAHRUNG
+  audioMimeType String?
+  audioGroesse  Int         @default(0)
+  transkript    String // STT-Ergebnis (bleibt als Quelle/Audit erhalten)
+  extraktion    Json? // strukturiertes LLM-Ergebnis inkl. Zahlen-Guardrail-Liste
+  sttProvider   String?
+  llmModell     String?
+  bestaetigtAm  DateTime?
+  erstelltAm    DateTime    @default(now())
+  aktualisiertAm DateTime   @updatedAt
+
+  @@index([periode, regionCode])
+  @@index([status])
+  @@index([erstelltAm])
+  @@map("voice_session")
+}

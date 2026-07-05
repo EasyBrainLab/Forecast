@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { api, ApiError } from '@/lib/api';
 import { Button, Card } from '@/components/ui';
 import { monKurz } from '@/lib/monate';
+import { VoicePanel } from '@/components/voice-panel';
 
 const KRITISCH_TYPEN = ['TENDER', 'KUNDENVERLUST', 'NEUKUNDE', 'PRODUKTPROBLEM', 'LIEFERPROBLEM', 'SONSTIGES'];
 const AKTIVITAET_TYPEN = ['BESUCH', 'TRAINING', 'MEETING', 'SUPPORT'];
@@ -428,6 +429,8 @@ function RegionReportCard({ periode, rr, bearbeitbar, sites, competitors, tender
       {eingereicht && r?.eingereichtAm && (
         <p className="text-xs text-gray-500">{t('eingereichtInfo', { datum: new Date(r.eingereichtAm).toLocaleDateString('de-DE'), von: r.gelesenVon ?? 'leer' })}</p>
       )}
+
+      {!readOnly && <VoicePanel periode={periode} regionCode={rr.regionCode} onUebernommen={reload} />}
 
       {/* §2 Zahlenteil (automatisch) */}
       <div>

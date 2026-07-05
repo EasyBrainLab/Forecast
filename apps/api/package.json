@@ -27,12 +27,14 @@
     "verify:erweiterungen": "ts-node --transpile-only scripts/verify-erweiterungen.ts",
     "verify:tender": "ts-node --transpile-only scripts/verify-tender.ts",
     "verify:customer-site": "ts-node --transpile-only scripts/verify-customer-site.ts",
-    "verify:report": "ts-node --transpile-only scripts/verify-report.ts"
+    "verify:report": "ts-node --transpile-only scripts/verify-report.ts",
+    "verify:voice": "ts-node --transpile-only scripts/verify-voice.ts"
   },
   "prisma": {
     "seed": "ts-node --transpile-only prisma/seed.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
     "@forecast/shared": "workspace:*",
     "@nestjs/common": "^10.4.4",
     "@nestjs/config": "^3.2.3",
@@ -49,8 +51,8 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "csv-parse": "^5.5.6",
-    "dotenv": "^16.4.5",
     "docx": "^8.5.0",
+    "dotenv": "^16.4.5",
     "exceljs": "^4.4.0",
     "helmet": "^8.0.0",
     "nodemailer": "^6.9.15",

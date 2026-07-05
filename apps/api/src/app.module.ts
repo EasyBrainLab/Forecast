@@ -25,6 +25,7 @@ import { TenderModule } from './tender/tender.module';
 import { CompetitorModule } from './competitor/competitor.module';
 import { CustomerSiteModule } from './customer-site/customer-site.module';
 import { ReportModule } from './report/report.module';
+import { VoiceModule } from './voice/voice.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -56,6 +57,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
     CompetitorModule,
     CustomerSiteModule,
     ReportModule,
+    VoiceModule,
   ],
   providers: [
     // Reihenfolge = Ausführungsreihenfolge: Throttler -> JwtAuth -> Roles
