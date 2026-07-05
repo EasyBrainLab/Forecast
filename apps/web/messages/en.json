@@ -344,6 +344,122 @@
     "fehlt": "Missing",
     "berichtAnsehen": "View report →"
   },
+  "hilfe": {
+    "titel": "Help & Training",
+    "untertitel": "User guide for the forecast and sales reporting portal. Use DE/EN in the top right to switch language.",
+    "schnellstartTitel": "Quick start: your monthly routine as an AGM (approx. 15 minutes)",
+    "schnellstart": [
+      "1 · By the 10th of the month: confirm your forecast — menu \"Forecast / Entry\". Everything fine? One click on \"Confirm unchanged\". For adjustments: change values, briefly justify variances above the threshold.",
+      "2 · By the 10th of the following month: submit your monthly report — menu \"Monthly report (sales)\". Fastest by dictation (microphone panel), otherwise directly in the form. Mandatory: forecast outlook + competition watch.",
+      "3 · Ongoing: maintain tenders — menu \"Tenders\". Record new tenders with their submission deadline immediately — the system reminds you 14/7/3/1 days before the deadline."
+    ],
+    "kapitel": {
+      "ersteSchritte": {
+        "titel": "Getting started",
+        "rollen": "alle",
+        "intro": "Access, language and basics.",
+        "schritte": [
+          "Access: you receive an invitation email. The link is valid for 7 days — set your password (min. 12 characters, upper/lower case, digit, special character), done.",
+          "Language: switch between DE and EN in the top right of the header. The setting is remembered.",
+          "Change password: header → \"Password\". After 5 failed attempts the account is locked for 30 minutes.",
+          "Navigation: on the left you only see the menu items relevant to your role. The start page is \"Overview & KPIs\" with the key figures and charts.",
+          "Reading numbers: amounts are shown in kEUR (thousand euros) unless labelled otherwise. Green = above plan, red = below plan."
+        ]
+      },
+      "forecast": {
+        "titel": "Confirm & adjust forecast (AGM)",
+        "rollen": "AGM",
+        "intro": "Every month by the 10th: confirm or adjust the forecast for the remaining months. A reminder email is sent automatically (3 days before the deadline), escalation to management the day after.",
+        "schritte": [
+          "Open \"Forecast / Entry\" — you see your region(s) with the matrix product line × country: budget rest, actuals YTD, forecast rest, YEE (year-end estimate) and variance.",
+          "No change needed? \"Confirm unchanged (1 click)\" — done.",
+          "Adjusting: change the forecast value in the row. The new total is distributed proportionally across the remaining months. A variance above the threshold (default ±10 %) requires a comment.",
+          "Month by month: \"Forecast (monthly view)\" shows each month individually (actual = closed months, forecast = open ones). Monthly variances > 5 % need a justification per month.",
+          "Rejected? If Head of Sales rejects your forecast you receive an email with the reason — the period is open again for your correction."
+        ]
+      },
+      "report": {
+        "titel": "Fill in & submit the monthly report (AGM)",
+        "rollen": "AGM",
+        "intro": "The structured monthly report replaces the Word form (P12F055). Deadline: 10th of the following month. The reporting month is pre-selected when you open the page.",
+        "schritte": [
+          "Open \"Monthly report (sales)\". The plan/actuals number section (section 2) is filled automatically from system data — nothing to type.",
+          "Fill in the sections: 1 critical topics (choose type: tender, customer loss, new customer, product/supply issue), 2a implants per site, 3 activities new/existing customers (visit/training/meeting/support), 4 marketing/congresses, 5 outlook with project list, 6 next activities, 7 competition watch, 8 market/staff/other.",
+          "Add entries via \"+ Entry\" — pick sites and competitors from the master lists (no free text for competitors).",
+          "Required for submission: forecast next month + current quarter (EUR) AND at least one competition entry OR the checkbox \"No change in the competitive situation\".",
+          "\"Save draft\" at any time; \"Submit report\" locks the report and notifies management. Corrections: \"Reopen\", edit, submit again (all tracked in the audit log).",
+          "Critical topics of type \"tender\" can be linked directly to a tender — keeping everything traceable."
+        ]
+      },
+      "diktat": {
+        "titel": "Dictate the report (AI support)",
+        "rollen": "AGM",
+        "intro": "Speak your report freely — also on mobile. The AI transcribes and fills in the fields. Languages: German, English, Spanish, Portuguese, French.",
+        "schritte": [
+          "In the monthly report use the microphone panel \"Dictate report\": choose the language (or automatic), \"Start recording\", speak freely as in your previous reports, \"Stop recording\".",
+          "The transcript appears for review — it is kept as the source on the report (audit).",
+          "\"Fill fields with AI\": the AI assigns your statements to the sections and suggests sites/competitors from the master data.",
+          "IMPORTANT — number check: every recognized number is shown with the spoken original snippet. Check each number, correct it if needed, and tick it off. Only when all numbers are checked does \"Apply to the form\" become active. Speech recognition confuses numbers — that's why this step is mandatory.",
+          "After applying, review the report in the form and submit as usual. The audio recording is deleted according to the privacy setting (default: immediately after applying).",
+          "No dictation button? Then AI is not configured on this system — the report works fully via the form."
+        ]
+      },
+      "tender": {
+        "titel": "Tenders",
+        "rollen": "AGM",
+        "intro": "Public tenders with deadlines and status — so no deadline ever passes unnoticed again.",
+        "schritte": [
+          "\"+ New tender\": record reference number, hospital, region and above all the submission deadline. Lots with volume/quantity optional, competitors via checkboxes from the master list.",
+          "Reminders: 14, 7, 3 and 1 day(s) before the deadline the AGMs of the region automatically receive an email.",
+          "Traffic light on the board: green = deadline far away, yellow = ≤ 30 days, red = ≤ 7 days or overdue.",
+          "Maintain the status: watching → submitted → won / lost / cancelled. Document prices (own vs. competitor) when known.",
+          "Tip: link tenders from within the monthly report (critical topic, type \"tender\")."
+        ]
+      },
+      "leitung": {
+        "titel": "For Head of Sales & BU management",
+        "rollen": "VERTRIEBSLEITER, BU_LEITER",
+        "intro": "Overview, control and approvals across all regions.",
+        "schritte": [
+          "\"Report status (manager)\": who has submitted the monthly report, who is overdue (red)? Acknowledge submitted reports with \"Mark as read\" — the AGM sees the read confirmation.",
+          "\"Status board\": forecast confirmation status per region with deadline. Rejecting with a reason is done from the forecast view — the region falls back to \"open\".",
+          "\"Consolidation\": BU total and per region — actuals YTD, YEE, budget, variance with traffic light.",
+          "\"Month-end close\": traffic light per month — are GL actuals, sales flash and units complete and within tolerance? Approving a month freezes it.",
+          "\"Sales flash & reconciliation\": upload the controlling PDF — region actuals are extracted automatically and reconciled against the tool's actuals.",
+          "\"Export center\": Excel variance report (HoS/BU) and Word management report (BU) at the push of a button; raw-data CSV for your own analyses.",
+          "Escalations: if a forecast or monthly report is still open after the deadline, management automatically receives an email."
+        ]
+      },
+      "admin": {
+        "titel": "For administration",
+        "rollen": "ADMIN",
+        "intro": "Data imports, master data and user management.",
+        "schritte": [
+          "\"Import\": three tiles — actual revenues (CSV, idempotent via RECID), budget (Excel), units sold (CSV, period from filename SF_MM_MM_YYYY). The units import automatically filters out total/empty/zero rows and lists them with a reason.",
+          "\"Import quarantine\": resolve unmatchable actuals rows (source corrected + re-imported = RECID heals the row) or discard them with a comment.",
+          "\"Competitors\": mandatory master list for tenders and competition watch. Deactivate instead of delete to keep history.",
+          "\"Sites / Clinics\": customers from the units import are proposed via similarity matching for confirmation — create a new site or assign to an existing one; never automatic. Status per site: new/active/at risk/lost/won back.",
+          "\"Customers → Region\": assign units customers to a sales region (only then does the AGM see \"their\" units). \"Delete\" permanently removes incorrectly imported customers including their records.",
+          "\"User management\": invitation by email (7-day link); for AGMs assign the region(s) — visibility follows automatically.",
+          "Settings (among others): thresholds, deadlines (DEADLINE_TAG, REPORT_DEADLINE_TAG), official actuals source, audio retention for dictation (delete immediately / 30 days / keep)."
+        ]
+      },
+      "faq": {
+        "titel": "Frequently asked questions (FAQ)",
+        "rollen": "alle",
+        "intro": "",
+        "schritte": [
+          "\"I can't submit the report\" — check the mandatory sections: forecast next month + quarter filled in? At least one competition entry or \"No change\" ticked?",
+          "\"I need to correct a submitted report\" — click \"Reopen\", edit, submit again. Every status change is logged.",
+          "\"Dictation got a number wrong\" — that's exactly what the number check is for: correct the value in the check dialog, tick it, then apply.",
+          "\"I can't see another region\" — that's intended: you only see your assigned regions. Assignments are changed by administration.",
+          "\"The page shows English/German\" — switcher in the top right (DE | EN).",
+          "\"Account locked\" — wait 30 minutes after 5 failed attempts or ask administration to reset the password.",
+          "\"When are reminders sent?\" — forecast: 3 days before the 10th · monthly report: 3 days before the 10th of the following month · tenders: 14/7/3/1 days before the deadline. Escalation to management the day after each deadline."
+        ]
+      }
+    }
+  },
   "export": {
     "titel": "Export center",
     "beschreibung": "Reports and raw data at the push of a button — data as of the selected year.",

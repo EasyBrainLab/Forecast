@@ -344,6 +344,122 @@
     "fehlt": "Fehlt",
     "berichtAnsehen": "Bericht ansehen →"
   },
+  "hilfe": {
+    "titel": "Hilfe & Schulung",
+    "untertitel": "Bedienungsanleitung für das Forecast- und Sales-Reporting-Portal. Wählen Sie oben rechts DE/EN für die Sprache.",
+    "schnellstartTitel": "Schnellstart: Ihr Monatsritual als AGM (ca. 15 Minuten)",
+    "schnellstart": [
+      "1 · Bis zum 10. des Monats: Forecast bestätigen — Menü „Forecast / Erfassung“. Passt alles? Ein Klick auf „Unverändert bestätigen“. Bei Anpassungen: Werte ändern, bei Abweichung > Schwellwert kurz begründen.",
+      "2 · Bis zum 10. des Folgemonats: Monatsbericht einreichen — Menü „Monatsbericht (Vertrieb)“. Am schnellsten per Diktat (Mikrofon-Panel), sonst direkt in der Maske. Pflicht: Forecast-Ausblick + Wettbewerbsbeobachtung.",
+      "3 · Laufend: Ausschreibungen pflegen — Menü „Ausschreibungen / Tender“. Neue Tender sofort mit Abgabefrist anlegen — das System erinnert Sie 14/7/3/1 Tage vor der Frist."
+    ],
+    "kapitel": {
+      "ersteSchritte": {
+        "titel": "Erste Schritte",
+        "rollen": "alle",
+        "intro": "Zugang, Sprache und Grundlagen.",
+        "schritte": [
+          "Zugang: Sie erhalten eine Einladungs-E-Mail. Der Link ist 7 Tage gültig — Passwort setzen (mind. 12 Zeichen, Groß-/Kleinbuchstabe, Ziffer, Sonderzeichen), fertig.",
+          "Sprache: Oben rechts im Kopfbereich zwischen DE und EN umschalten. Die Einstellung bleibt gespeichert.",
+          "Passwort ändern: Kopfzeile → „Passwort“. Nach 5 Fehlversuchen wird das Konto 30 Minuten gesperrt.",
+          "Navigation: Links sehen Sie nur die Menüpunkte, die Ihre Rolle betreffen. Startseite ist „Übersicht & KPIs“ mit den wichtigsten Kennzahlen und Diagrammen.",
+          "Zahlen lesen: Beträge sind in kEUR (Tausend Euro) dargestellt, sofern nicht anders beschriftet. Grün = über Plan, Rot = unter Plan."
+        ]
+      },
+      "forecast": {
+        "titel": "Forecast bestätigen & anpassen (AGM)",
+        "rollen": "AGM",
+        "intro": "Jeden Monat bis zum 10.: Forecast der Restmonate bestätigen oder anpassen. Erinnerung kommt automatisch per E-Mail (3 Tage vor Frist), Eskalation an die Leitung am Tag nach der Frist.",
+        "schritte": [
+          "„Forecast / Erfassung“ öffnen — Sie sehen Ihre Region(en) mit der Matrix Produktgruppe × Land: Budget Rest, Ist YTD, Forecast Rest, YEE (Jahres-Hochrechnung) und Abweichung.",
+          "Keine Änderung nötig? „Unverändert bestätigen (1 Klick)“ — fertig.",
+          "Anpassen: Forecast-Wert in der Zeile ändern. Der neue Gesamtwert wird proportional auf die Restmonate verteilt. Bei Abweichung über dem Schwellwert (Standard ±10 %) ist ein Kommentar Pflicht.",
+          "Monatsgenau arbeiten: „Forecast (Monatssicht)“ zeigt jeden Monat einzeln (Actual = abgeschlossene Monate, Forecast = offene). Abweichungen > 5 % je Monat brauchen eine Begründung je Monat.",
+          "Zurückgewiesen? Wenn die Vertriebsleitung Ihren Forecast zurückweist, erhalten Sie eine E-Mail mit Begründung — die Periode ist wieder offen für Ihre Korrektur."
+        ]
+      },
+      "report": {
+        "titel": "Monatsbericht erfassen & einreichen (AGM)",
+        "rollen": "AGM",
+        "intro": "Der strukturierte Monatsbericht ersetzt das Word-Formular (P12F055). Frist: 10. des Folgemonats. Der Berichtsmonat ist beim Öffnen bereits vorausgewählt.",
+        "schritte": [
+          "„Monatsbericht (Vertrieb)“ öffnen. Der Plan/Ist-Zahlenteil (Abschnitt 2) wird automatisch aus den Systemdaten gefüllt — nichts abtippen.",
+          "Abschnitte ausfüllen: 1 Kritische Themen (Typ wählen: Ausschreibung, Kundenverlust, Neukunde, Produkt-/Lieferproblem), 2a Implantationen je Standort, 3 Aktivitäten Neu-/Bestandskunden (Besuch/Training/Meeting/Support), 4 Marketing/Kongresse, 5 Ausblick mit Projektliste, 6 Nächste Aktivitäten, 7 Wettbewerbsbeobachtung, 8 Markt/Personal/Sonstiges.",
+          "Einträge über „+ Eintrag“ hinzufügen — Standorte und Wettbewerber wählen Sie aus den Stammlisten (kein Freitext bei Wettbewerbern).",
+          "Pflicht zum Einreichen: Forecast Folgemonat + laufendes Quartal (EUR) UND mindestens ein Wettbewerbs-Eintrag ODER das Häkchen „Keine Veränderung der Wettbewerbslage\".",
+          "„Entwurf speichern“ jederzeit; „Bericht einreichen“ sperrt den Bericht und meldet ihn der Leitung. Korrekturen: „Wieder öffnen“, ändern, erneut einreichen (alles im Audit-Protokoll).",
+          "Kritische Themen vom Typ „Ausschreibung“ können Sie direkt mit einem Tender verknüpfen — so bleibt alles nachverfolgbar."
+        ]
+      },
+      "diktat": {
+        "titel": "Bericht diktieren (KI-Unterstützung)",
+        "rollen": "AGM",
+        "intro": "Sprechen Sie den Bericht frei ein — auch mobil. Die KI transkribiert und befüllt die Felder. Sprachen: Deutsch, Englisch, Spanisch, Portugiesisch, Französisch.",
+        "schritte": [
+          "Im Monatsbericht das Mikrofon-Panel „Bericht diktieren“ nutzen: Sprache wählen (oder automatisch), „Aufnahme starten“, frei sprechen wie im bisherigen Bericht, „Aufnahme beenden“.",
+          "Das Transkript erscheint zur Kontrolle — es bleibt als Quelle am Bericht gespeichert (Audit).",
+          "„Felder mit KI befüllen“: Die KI ordnet Ihre Aussagen den Abschnitten zu und schlägt Standorte/Wettbewerber aus den Stammdaten vor.",
+          "WICHTIG — Zahlen-Prüfung: Jede erkannte Zahl wird mit dem gesprochenen Original-Ausschnitt angezeigt. Prüfen Sie jede Zahl, korrigieren Sie falls nötig, und haken Sie sie ab. Erst wenn alle Zahlen geprüft sind, ist „In die Maske übernehmen“ aktiv. Spracherkennung verwechselt Zahlen — deshalb ist dieser Schritt Pflicht.",
+          "Nach der Übernahme prüfen Sie den Bericht in der Maske und reichen wie gewohnt ein. Die Audio-Aufnahme wird gemäß Datenschutz-Einstellung gelöscht (Standard: sofort nach Übernahme).",
+          "Diktat-Button fehlt? Dann ist die KI auf dem System nicht konfiguriert — der Bericht funktioniert vollständig auch über die Maske."
+        ]
+      },
+      "tender": {
+        "titel": "Ausschreibungen / Tender",
+        "rollen": "AGM",
+        "intro": "Öffentliche Ausschreibungen mit Fristen und Status — damit nie wieder eine Frist unbemerkt verstreicht.",
+        "schritte": [
+          "„+ Neue Ausschreibung“: Referenznummer, Krankenhaus, Region und vor allem die Abgabefrist erfassen. Lose mit Volumen/Menge optional, Wettbewerber per Häkchen aus der Stammliste.",
+          "Erinnerungen: 14, 7, 3 und 1 Tag vor der Frist erhalten die AGMs der Region automatisch eine E-Mail.",
+          "Ampel im Board: Grün = Frist fern, Gelb = ≤ 30 Tage, Rot = ≤ 7 Tage oder überfällig.",
+          "Status pflegen: Beobachtet → Eingereicht → Gewonnen / Verloren / Storniert. Preise (eigen vs. Wettbewerb) dokumentieren, wenn bekannt.",
+          "Tipp: Tender aus dem Monatsbericht heraus verknüpfen (Kritisches Thema, Typ „Ausschreibung“)."
+        ]
+      },
+      "leitung": {
+        "titel": "Für Vertriebs- & BU-Leitung",
+        "rollen": "VERTRIEBSLEITER, BU_LEITER",
+        "intro": "Überblick, Kontrolle und Freigaben über alle Regionen.",
+        "schritte": [
+          "„Bericht-Status (Manager)“: Wer hat den Monatsbericht abgegeben, wer ist überfällig (rot)? Eingereichte Berichte mit „Als gelesen markieren“ quittieren — der AGM sieht die Lesebestätigung.",
+          "„Status-Board“: Forecast-Bestätigungsstatus je Region mit Frist. Zurückweisen mit Begründung ist über die Forecast-Ansicht möglich — die Region fällt auf „offen“ zurück.",
+          "„Konsolidierung“: BU-Gesamt und je Region — Ist YTD, YEE, Budget, Abweichung mit Ampel.",
+          "„Monatsabschluss“: Ampel je Monat — sind GL-Ist, Sales-Flash und Stückzahlen vollständig und im Toleranzband? Monat freigeben = einfrieren.",
+          "„Sales-Flash & Abgleich“: Controlling-PDF hochladen — Region-Actuals werden automatisch ausgelesen und gegen das Tool-Ist abgeglichen.",
+          "„Export-Center“: Excel-Abweichungsbericht (VL/BU) und Word-Managementbericht (BU) per Knopfdruck; Rohdaten-CSV für eigene Auswertungen.",
+          "Eskalationen: Bleibt ein Forecast oder Monatsbericht nach der Frist offen, geht automatisch eine E-Mail an die Leitung."
+        ]
+      },
+      "admin": {
+        "titel": "Für Administration",
+        "rollen": "ADMIN",
+        "intro": "Datenimporte, Stammdaten und Nutzerverwaltung.",
+        "schritte": [
+          "„Import“: Drei Kacheln — Ist-Umsätze (CSV, idempotent über RECID), Budget (Excel), Absatz/Stückzahlen (CSV, Periode aus Dateiname SF_MM_MM_JJJJ). Der Absatz-Import sortiert Summen-/Leer-/Nullzeilen automatisch aus und zeigt sie mit Grund an.",
+          "„Import-Quarantäne“: Nicht zuordenbare Ist-Zeilen klären (Quelle korrigiert + neu importiert = RECID heilt die Zeile) oder mit Kommentar verwerfen.",
+          "„Wettbewerber“: Pflichtstammliste für Tender und Wettbewerbsbeobachtung. Deaktivieren statt löschen erhält die Historie.",
+          "„Standorte / Kliniken“: Kunden aus dem Absatz-Import werden per Ähnlichkeits-Vorschlag zur Bestätigung vorgelegt — neuen Standort anlegen oder bestehendem zuordnen; nie automatisch. Status je Standort: neu/aktiv/gefährdet/verloren/zurückgewonnen.",
+          "„Kunden → Region“: Absatz-Kunden einer Vertriebsregion zuordnen (erst dann sieht der AGM „seine“ Stückzahlen). „Löschen“ entfernt fehlerhaft importierte Kunden samt Datensätzen endgültig.",
+          "„Nutzerverwaltung“: Einladung per E-Mail (7-Tage-Link); bei AGMs die Region(en) zuordnen — daraus ergibt sich automatisch, was sie sehen dürfen.",
+          "Einstellungen (u. a.): Schwellwerte, Fristen (DEADLINE_TAG, REPORT_DEADLINE_TAG), offizielle Ist-Quelle, Audio-Aufbewahrung fürs Diktat (sofort löschen / 30 Tage / behalten)."
+        ]
+      },
+      "faq": {
+        "titel": "Häufige Fragen (FAQ)",
+        "rollen": "alle",
+        "intro": "",
+        "schritte": [
+          "„Ich kann den Bericht nicht einreichen“ — Pflichtabschnitte prüfen: Forecast Folgemonat + Quartal ausgefüllt? Mindestens ein Wettbewerbs-Eintrag oder „Keine Veränderung“ angehakt?",
+          "„Ich muss einen eingereichten Bericht korrigieren“ — „Wieder öffnen“ klicken, ändern, erneut einreichen. Jede Statusänderung wird protokolliert.",
+          "„Das Diktat erkennt eine Zahl falsch“ — Genau dafür ist die Zahlen-Prüfung da: Wert im Prüf-Dialog korrigieren, abhaken, dann übernehmen.",
+          "„Ich sehe eine andere Region nicht“ — Richtig so: Sie sehen nur Ihre zugeordneten Regionen. Zuordnungen ändert die Administration.",
+          "„Die Seite zeigt Englisch/Deutsch“ — Umschalter oben rechts (DE | EN).",
+          "„Konto gesperrt“ — Nach 5 Fehlversuchen 30 Minuten warten oder die Administration bitten, das Passwort zurückzusetzen.",
+          "„Wann kommen Erinnerungen?“ — Forecast: 3 Tage vor dem 10. · Monatsbericht: 3 Tage vor dem 10. des Folgemonats · Tender: 14/7/3/1 Tage vor Abgabefrist. Eskalation an die Leitung jeweils am Tag nach der Frist."
+        ]
+      }
+    }
+  },
   "export": {
     "titel": "Export-Center",
     "beschreibung": "Berichte und Rohdaten per Knopfdruck — Datenstand des gewählten Jahres.",
