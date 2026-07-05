@@ -10,9 +10,6 @@ async function main(): Promise<void> {
   const prisma = app.get(PrismaService);
   const svc = app.get(ReportService);
 
-  const admin = await prisma.user.findFirstOrThrow({ where: { rolle: 'ADMIN' } });
-  const adminAktor: RequestUser = { id: admin.id, email: admin.email, rolle: 'ADMIN' };
-
   const fails: string[] = [];
   const check = (n: string, c: boolean): void => {
     console.log(`${c ? '✓' : '✗'} ${n}`);

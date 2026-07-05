@@ -27,7 +27,6 @@ export default function EinladungPage() {
       .get<Invitation>(`/auth/invitation/${token}/validate`)
       .then(setInfo)
       .catch((e) => setLadeFehler((e as Error).message || t('ungueltig')));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const submit = async (e: React.FormEvent): Promise<void> => {

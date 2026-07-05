@@ -344,7 +344,6 @@ function RegionReportCard({ periode, rr, bearbeitbar, sites, competitors, tender
       personal: r?.personal ?? '',
       sonstiges: r?.sonstiges ?? '',
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periode, rr.regionCode, rr.status]);
 
   const { data: zahlen } = useQuery({
