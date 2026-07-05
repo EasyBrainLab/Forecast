@@ -420,7 +420,8 @@
           "Reminders: 14, 7, 3 and 1 day(s) before the deadline the AGMs of the region automatically receive an email.",
           "Traffic light on the board: green = deadline far away, yellow = ≤ 30 days, red = ≤ 7 days or overdue.",
           "Maintain the status: watching → submitted → won / lost / cancelled. Document prices (own vs. competitor) when known.",
-          "Tip: link tenders from within the monthly report (critical topic, type \"tender\")."
+          "Tip: link tenders from within the monthly report (critical topic, type \"tender\").",
+          "AI analysis: upload the tender PDF in the \"Analyze tender\" panel — the AI extracts reference, deadlines, lots and the question catalogue. After the deadline/number check: create the tender with one click and download the response draft as a Word file (draft — review before submission)."
         ]
       },
       "leitung": {
@@ -479,5 +480,36 @@
     "erzeuge": "Generating…",
     "gestartet": "✓ Download started.",
     "nurLeitung": "Note: the variance report and Word report are available to Head of Sales and BU management."
+  },
+  "tenderKi": {
+    "titel": "Analyze tender (AI)",
+    "beschreibung": "Upload the tender PDF — the AI extracts key data, deadlines, lots and the question catalogue. Confirm deadlines and quantities individually, then create the tender and generate the response draft (Word).",
+    "nichtVerfuegbar": "AI analysis is not configured. Administration: store the keys under \"AI & Tenders\".",
+    "datei": "Tender document (PDF or text, max. 15 MB)",
+    "hochladen": "Upload & analyze",
+    "laeuft": "Analyzing document… (large PDFs may take a moment)",
+    "zusammenfassung": "Summary",
+    "kerndaten": "Key data (review & correct)",
+    "lose": "Lots",
+    "losBezeichnung": "Description",
+    "losMenge": "Quantity",
+    "losVolumen": "Volume (EUR)",
+    "guardrailTitel": "Deadline & number check (mandatory)",
+    "guardrailText": "Please check every recognized deadline/quantity against the quote from the document — confirm or correct.",
+    "kontext": "In the document",
+    "wert": "Value",
+    "bestaetigt": "Checked",
+    "alleBestaetigen": "Mark all as checked",
+    "nochOffen": "{anzahl} value(s) still unchecked",
+    "fragen": "Required information & answers (draft — please review/complete)",
+    "quelle": "Source",
+    "nachweise": "Checklist of required evidence",
+    "tenderAnlegen": "Create tender",
+    "tenderAngelegt": "✓ Tender created and linked to the document.",
+    "antwortDocx": "Download response draft (Word)",
+    "entwurfHinweis": "The Word document is an AI-assisted DRAFT — review professionally before submission.",
+    "verwerfen": "Discard",
+    "neu": "New analysis",
+    "formatFehler": "Please choose a PDF or text file (export Word as PDF)."
   }
 }

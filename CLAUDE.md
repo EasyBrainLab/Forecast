@@ -38,10 +38,12 @@ AGM | VERTRIEBSLEITER | BU_LEITER | ADMIN | SUPPORT
 3. Ist-Import (RECID-Upsert, Validierungsbericht, Quarantäne)
 
 ## Verifikation
-`pnpm --filter @forecast/shared test:cov` + `verify:ist|budget|budget-wf|forecast-wf|dashboard|export|absatz|erweiterungen|tender|customer-site|report|voice` (DATEN_DIR=Repo-Root).
+`pnpm --filter @forecast/shared test:cov` + `verify:ist|budget|budget-wf|forecast-wf|dashboard|export|absatz|erweiterungen|tender|customer-site|report|voice|ki|tender-analyse` (Alt-Skripte: DATEN_DIR=<abs>/docs; neue: Repo-Root).
 
 ## Sales-Reporting-Modul (seit 2026-07)
 Tender (Fristen-Reminder 14/7/3/1) · Competitor-/CustomerSite-Stammdaten (Fuzzy-Match-Bestätigung) ·
 MonthlyReport (8 Abschnitte, Pflicht: Forecast+Wettbewerb, GELESEN-Bestätigung, Frist REPORT_DEADLINE_TAG) ·
-Voice-Diktat (Whisper+Claude `claude-opus-4-8`, Zahlen-Guardrail, Audio-Retention AUDIO_AUFBEWAHRUNG; ohne
-ANTHROPIC_API_KEY/OPENAI_API_KEY deaktiviert) · i18n DE/EN (next-intl, Cookie) · Hilfe/Schulung unter /hilfe.
+Voice-Diktat (Whisper+Claude `claude-opus-4-8`, Zahlen-Guardrail, Audio-Retention AUDIO_AUFBEWAHRUNG) ·
+KI-Konfiguration im Tool: /admin/ki (Modell + Keys AES-verschlüsselt in Einstellung, DB→ENV-Fallback via
+KiConfigService — Keys NIE loggen/zurückgeben) · Tender-Analyse-Agent: PDF als document-Block an Claude,
+Guardrail, Tender-Übernahme + DOCX-Antwortentwurf (/tender-Panel) · i18n DE/EN (next-intl, Cookie) · /hilfe.
