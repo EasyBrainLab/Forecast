@@ -33,7 +33,10 @@ Stack-Variante: TypeScript Default · Regulated: Nein · Multi-Tenant: Nein (Kos
 AGM | VERTRIEBSLEITER | BU_LEITER | ADMIN | SUPPORT
 
 ## Kritische Workflows
-1. Monatlicher Forecast-Zyklus (OFFEN -> BESTAETIGT/ANGEPASST -> ABGESCHLOSSEN) — F1–F8
+1. Monatlicher Forecast-Zyklus (OFFEN -> BESTAETIGT/ANGEPASST -> ABGESCHLOSSEN) — F1–F9.
+   Abschluss (F6–F8: Cron ODER BU_LEITER/ADMIN) kaskadiert auf alle älteren Perioden der Region;
+   Wiedereröffnung (F9: VERTRIEBSLEITER/BU_LEITER/ADMIN, Begründung Pflicht) auf alle jüngeren.
+   Invariante: bis zur jüngsten abgeschlossenen Periode ist lückenlos alles abgeschlossen.
 2. Budget-Änderung (zweistufig: Vertriebsleiter -> BU-Leiter, 4-Augen) — B2–B7
 3. Ist-Import (RECID-Upsert, Validierungsbericht, Quarantäne)
 

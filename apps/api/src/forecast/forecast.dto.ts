@@ -84,6 +84,13 @@ export class ZurueckweisenDto {
   begruendung!: string;
 }
 
+export class WiederOeffnenDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(1000)
+  begruendung!: string;
+}
+
 export class OeffnePeriodeDto {
   @Matches(/^\d{4}-\d{2}$/)
   periode!: string;

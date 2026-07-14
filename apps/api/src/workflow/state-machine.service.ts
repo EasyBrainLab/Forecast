@@ -22,8 +22,12 @@ export class StateMachineService {
   pruefe<S extends string>(transitions: readonly Transition<S>[], von: S, ziel: S, ctx: TransitionContext): Transition<S> {
     const def = findTransition(transitions, von, ziel);
     if (!def) throw new ConflictException(`Übergang ${von} → ${ziel} nicht erlaubt.`);
-    if (def.system && !ctx.system) throw new ForbiddenException('System-Übergang, keine Nutzeraktion.');
-    if (!def.system && !def.rollen.includes(ctx.rolle)) {
+    // `system: true` ohne Rollen = ausschließlich SYSTEM. Mit Rollen = SYSTEM *oder* diese Rollen.
+    // Ein SYSTEM-Kontext hebt die Rollenprüfung nur bei system-markierten Übergängen auf.
+    const nurSystem = def.system === true && def.rollen.length === 0;
+    const alsSystem = ctx.system === true && def.system === true;
+    if (nurSystem && !ctx.system) throw new ForbiddenException('System-Übergang, keine Nutzeraktion.');
+    if (!alsSystem && !def.rollen.includes(ctx.rolle)) {
       throw new ForbiddenException('Keine Berechtigung für diesen Übergang.');
     }
     if (def.keineSelbstfreigabe && ctx.antragstellerId && ctx.antragstellerId === ctx.aktorId) {
