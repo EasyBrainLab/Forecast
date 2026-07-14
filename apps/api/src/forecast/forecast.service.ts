@@ -56,6 +56,19 @@ export class ForecastService {
     return { jahr: y, monat: m, monate };
   }
 
+  /**
+   * Perioden-Filter für die Abschluss-/Wiedereröffnungs-Kaskade. Verglichen wird über die indizierten
+   * Felder jahr/monat (@@index([jahr, monat])) statt über den periode-String — dessen Ordnung hinge
+   * sonst an der DB-Collation.
+   */
+  private static bisEinschliesslich(p: { jahr: number; monat: number }): Prisma.ForecastPeriodeWhereInput {
+    return { OR: [{ jahr: { lt: p.jahr } }, { jahr: p.jahr, monat: { lte: p.monat } }] };
+  }
+
+  private static abEinschliesslich(p: { jahr: number; monat: number }): Prisma.ForecastPeriodeWhereInput {
+    return { OR: [{ jahr: { gt: p.jahr } }, { jahr: p.jahr, monat: { gte: p.monat } }] };
+  }
+
   /** Liest eine numerische Einstellung fail-safe: nicht-numerische/fehlende Werte fallen auf den Default zurück. */
   private async numEinstellung(key: string, def: number): Promise<number> {
     const e = await this.prisma.einstellung.findUnique({ where: { key } });
@@ -227,16 +240,101 @@ export class ForecastService {
     return { status: ForecastStatus.OFFEN };
   }
 
-  /** F6/F7/F8 (SYSTEM, Monatsabschluss) -> ABGESCHLOSSEN. */
-  async abschliessen(periode: string, regionCode: string, aktor: RequestUser) {
-    const p = await this.ladePeriode(periode, regionCode);
-    this.sm.pruefe(FORECAST_TRANSITIONS, p.status, ForecastStatus.ABGESCHLOSSEN, { rolle: aktor.rolle, aktorId: aktor.id, system: true });
-    await this.prisma.$transaction(async (tx) => {
-      await this.neueVersionen(tx, periode, regionCode, ForecastStatus.ABGESCHLOSSEN, aktor);
-      await tx.forecastPeriode.update({ where: { id: p.id }, data: { status: ForecastStatus.ABGESCHLOSSEN, abgeschlossenAm: new Date() } });
-      await this.audit.write({ entitaet: 'ForecastPeriode', entitaetId: p.id, aktion: 'STATUS_WECHSEL', userId: null, userEmail: 'SYSTEM', nachherWert: { status: 'ABGESCHLOSSEN' } }, tx);
+  /**
+   * F6/F7/F8 (Monatsabschluss) -> ABGESCHLOSSEN, ausgelöst vom Cron oder manuell durch BU-Leiter/Admin.
+   * Kaskadiert auf alle älteren, noch nicht abgeschlossenen Perioden derselben Region: bis zur jüngsten
+   * abgeschlossenen Periode ist damit lückenlos alles zu. Idempotent — ist nichts mehr offen, passiert nichts.
+   */
+  async abschliessen(periode: string, regionCode: string, aktor: RequestUser, opt: { system?: boolean } = {}) {
+    const ziel = await this.ladePeriode(periode, regionCode);
+    const system = opt.system === true;
+    const offene = await this.prisma.forecastPeriode.findMany({
+      where: { regionCode, status: { not: ForecastStatus.ABGESCHLOSSEN }, ...ForecastService.bisEinschliesslich(ziel) },
+      orderBy: [{ jahr: 'asc' }, { monat: 'asc' }],
     });
-    return { status: ForecastStatus.ABGESCHLOSSEN };
+    // Alle Übergänge vorab prüfen (403/409), damit die Transaktion nicht auf halbem Weg abbricht.
+    for (const p of offene) {
+      this.sm.pruefe(FORECAST_TRANSITIONS, p.status, ForecastStatus.ABGESCHLOSSEN, { rolle: aktor.rolle, aktorId: aktor.id, system });
+    }
+    const abgeschlossen = offene.map((p) => p.periode);
+    if (offene.length > 0) {
+      const jetzt = new Date();
+      await this.prisma.$transaction(
+        async (tx) => {
+          for (const p of offene) {
+            await this.neueVersionen(tx, p.periode, regionCode, ForecastStatus.ABGESCHLOSSEN, aktor);
+            await tx.forecastPeriode.update({ where: { id: p.id }, data: { status: ForecastStatus.ABGESCHLOSSEN, abgeschlossenAm: jetzt } });
+            await this.audit.write(
+              {
+                entitaet: 'ForecastPeriode',
+                entitaetId: p.id,
+                aktion: 'STATUS_WECHSEL',
+                userId: system ? null : aktor.id,
+                userEmail: system ? 'SYSTEM' : aktor.email,
+                vorherWert: { status: p.status },
+                nachherWert: { status: 'ABGESCHLOSSEN' },
+                metadaten: { ausgeloestDurch: periode, kaskadiert: p.periode !== periode, mitAbgeschlossen: abgeschlossen },
+              },
+              tx,
+            );
+          }
+        },
+        { timeout: 60_000, maxWait: 10_000 },
+      );
+    }
+    return { status: ForecastStatus.ABGESCHLOSSEN, abgeschlossen };
+  }
+
+  /**
+   * F9: ABGESCHLOSSEN -> OFFEN (Vertriebsleiter/BU-Leiter/Admin, Begründung Pflicht). Kaskadiert auf alle
+   * jüngeren abgeschlossenen Perioden derselben Region, damit kein offenes Loch zwischen abgeschlossenen
+   * Monaten entsteht. Die eingefrorenen Werte bleiben erhalten und werden als neue OFFEN-Version angehängt.
+   */
+  async wiederOeffnen(periode: string, regionCode: string, aktor: RequestUser, begruendung: string) {
+    const ziel = await this.ladePeriode(periode, regionCode);
+    // Wirft 409 (Periode nicht abgeschlossen), 403 (Rolle) oder 422 (Begründung fehlt).
+    this.sm.pruefe(FORECAST_TRANSITIONS, ziel.status, ForecastStatus.OFFEN, { rolle: aktor.rolle, aktorId: aktor.id, begruendung });
+    const betroffene = await this.prisma.forecastPeriode.findMany({
+      where: { regionCode, status: ForecastStatus.ABGESCHLOSSEN, ...ForecastService.abEinschliesslich(ziel) },
+      orderBy: [{ jahr: 'desc' }, { monat: 'desc' }], // jüngste zuerst: Kette von hinten abbauen
+    });
+    const wiederGeoeffnet = betroffene.map((p) => p.periode);
+    await this.prisma.$transaction(
+      async (tx) => {
+        for (const p of betroffene) {
+          await this.neueVersionen(tx, p.periode, regionCode, ForecastStatus.OFFEN, aktor, undefined, begruendung);
+          await tx.forecastPeriode.update({ where: { id: p.id }, data: { status: ForecastStatus.OFFEN, abgeschlossenAm: null } });
+          await this.audit.write(
+            {
+              entitaet: 'ForecastPeriode',
+              entitaetId: p.id,
+              aktion: 'STATUS_WECHSEL',
+              userId: aktor.id,
+              userEmail: aktor.email,
+              vorherWert: { status: 'ABGESCHLOSSEN', abgeschlossenAm: p.abgeschlossenAm },
+              nachherWert: { status: 'OFFEN' },
+              metadaten: { ausgeloestDurch: periode, kaskadiert: p.periode !== periode, mitGeoeffnet: wiederGeoeffnet, begruendung },
+            },
+            tx,
+          );
+        }
+      },
+      { timeout: 60_000, maxWait: 10_000 },
+    );
+    const agms = await this.aktiveAgms(regionCode);
+    await Promise.all(
+      agms.map((e) =>
+        this.mail.send(
+          e,
+          infoMail(
+            'Forecast wieder geöffnet',
+            'Bearbeitung erneut möglich',
+            `Region ${regionCode}, Perioden: ${wiederGeoeffnet.join(', ')}. Begründung: ${begruendung}`,
+          ),
+        ),
+      ),
+    );
+    return { status: ForecastStatus.OFFEN, wiederGeoeffnet };
   }
 
   private async neueVersionen(
@@ -249,27 +347,27 @@ export class ForecastService {
     kommentar?: string | null,
   ): Promise<void> {
     const latest = await this.latestVersionen(tx, periode, regionCode);
-    for (const v of latest) {
-      const k = `${v.landId}|${v.e1Id}`;
-      const adj = adjust?.get(k);
+    // Bulk-Insert statt N Einzel-Inserts: bei der Abschluss-Kaskade laufen sonst hunderte Roundtrips
+    // sequentiell in einer Transaktion.
+    const rows = latest.map((v) => {
+      const adj = adjust?.get(`${v.landId}|${v.e1Id}`);
       const mwNeu = adj ? mergeMonatsKommentar(v.monatswerteRest as unknown as MonatswerteRest, adj.mw) : v.monatswerteRest;
-      await tx.forecastVersion.create({
-        data: {
-          periode,
-          jahr: v.jahr,
-          monat: v.monat,
-          regionCode,
-          landId: v.landId,
-          e1Id: v.e1Id,
-          monatswerteRest: mwNeu as Prisma.InputJsonValue,
-          status,
-          kommentar: kommentar ?? null,
-          schwellwertVerletzt: adj?.verletzt ?? false,
-          version: v.version + 1,
-          userId: aktor.id,
-        },
-      });
-    }
+      return {
+        periode,
+        jahr: v.jahr,
+        monat: v.monat,
+        regionCode,
+        landId: v.landId,
+        e1Id: v.e1Id,
+        monatswerteRest: mwNeu as Prisma.InputJsonValue,
+        status,
+        kommentar: kommentar ?? null,
+        schwellwertVerletzt: adj?.verletzt ?? false,
+        version: v.version + 1,
+        userId: aktor.id,
+      };
+    });
+    if (rows.length > 0) await tx.forecastVersion.createMany({ data: rows });
   }
 
   private async aktiveAgms(regionCode: string): Promise<string[]> {

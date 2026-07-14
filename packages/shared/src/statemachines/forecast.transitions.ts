@@ -26,7 +26,34 @@ export const FORECAST_TRANSITIONS: readonly Transition<ForecastStatus>[] = [
     begruendungPflicht: true,
   },
   { id: 'F5', von: ForecastStatus.ZURUECKGEWIESEN, nach: ForecastStatus.OFFEN, rollen: [], system: true },
-  { id: 'F6', von: ForecastStatus.BESTAETIGT, nach: ForecastStatus.ABGESCHLOSSEN, rollen: [], system: true },
-  { id: 'F7', von: ForecastStatus.ANGEPASST, nach: ForecastStatus.ABGESCHLOSSEN, rollen: [], system: true },
-  { id: 'F8', von: ForecastStatus.OFFEN, nach: ForecastStatus.ABGESCHLOSSEN, rollen: [], system: true },
+  // F6–F8: Monatsabschluss. Cron (system) und manuell durch die Leitung — Kaskade auf ältere Perioden.
+  {
+    id: 'F6',
+    von: ForecastStatus.BESTAETIGT,
+    nach: ForecastStatus.ABGESCHLOSSEN,
+    rollen: [Rolle.BU_LEITER, Rolle.ADMIN],
+    system: true,
+  },
+  {
+    id: 'F7',
+    von: ForecastStatus.ANGEPASST,
+    nach: ForecastStatus.ABGESCHLOSSEN,
+    rollen: [Rolle.BU_LEITER, Rolle.ADMIN],
+    system: true,
+  },
+  {
+    id: 'F8',
+    von: ForecastStatus.OFFEN,
+    nach: ForecastStatus.ABGESCHLOSSEN,
+    rollen: [Rolle.BU_LEITER, Rolle.ADMIN],
+    system: true,
+  },
+  // F9: Wiedereröffnung (Korrekturfall). Kaskadiert auf alle jüngeren abgeschlossenen Perioden.
+  {
+    id: 'F9',
+    von: ForecastStatus.ABGESCHLOSSEN,
+    nach: ForecastStatus.OFFEN,
+    rollen: [Rolle.VERTRIEBSLEITER, Rolle.BU_LEITER, Rolle.ADMIN],
+    begruendungPflicht: true,
+  },
 ];

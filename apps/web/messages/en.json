@@ -178,7 +178,15 @@
     "begruendungPlaceholder": "Justification for the variance (mandatory)…",
     "speichern": "Save {anzahl} cell(s)",
     "speichert": "Saving…",
-    "verwerfen": "Discard"
+    "verwerfen": "Discard",
+    "abschliessen": "Close period",
+    "abschliessenBusy": "Closing…",
+    "abschliessenFrage": "Close period {periode}? This also closes every older period of this region that is still open.",
+    "wiederOeffnen": "Reopen",
+    "wiederOeffnenBusy": "Reopening…",
+    "wiederOeffnenHinweis": "Also reopens all newer closed periods of this region so no gap is left. The AGM can edit again afterwards.",
+    "wiederOeffnenBegruendung": "Reason for reopening (mandatory)…",
+    "abbrechen": "Cancel"
   },
   "tender": {
     "titel": "Tenders",

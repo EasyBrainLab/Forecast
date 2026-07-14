@@ -69,8 +69,36 @@ async function main(): Promise<void> {
   check('F2 OFFEN→ANGEPASST mit Pflichtkommentar', r3.status === 'ANGEPASST' && r3.schwellwertVerletzt === true);
 
   await expectStatus('Bestätigen aus ANGEPASST → 409 (kein Übergang)', 409, () => svc.bestaetigen(periode, region, agm));
-  check('F7 ANGEPASST→ABGESCHLOSSEN (SYSTEM)', (await svc.abschliessen(periode, region, system)).status === 'ABGESCHLOSSEN');
-  await expectStatus('Bestätigen nach ABGESCHLOSSEN → 409 (terminal)', 409, () => svc.bestaetigen(periode, region, agm));
+  await expectStatus('Abschließen als AGM → 403', 403, () => svc.abschliessen(periode, region, agm));
+  check('F7 ANGEPASST→ABGESCHLOSSEN (SYSTEM)', (await svc.abschliessen(periode, region, system, { system: true })).status === 'ABGESCHLOSSEN');
+  await expectStatus('Bestätigen nach ABGESCHLOSSEN → 409 (kein Übergang)', 409, () => svc.bestaetigen(periode, region, agm));
+
+  // F9 — Wiedereröffnung (Rollen + Pflicht-Begründung)
+  await expectStatus('Wiedereröffnen als AGM → 403', 403, () => svc.wiederOeffnen(periode, region, agm, 'Korrektur'));
+  await expectStatus('Wiedereröffnen ohne Begründung → 422', 422, () => svc.wiederOeffnen(periode, region, vl, '   '));
+  const wo = await svc.wiederOeffnen(periode, region, vl, 'Nachmeldung Ist-Umsatz');
+  const pWo = await prisma.forecastPeriode.findUniqueOrThrow({ where: { periode_regionCode: { periode, regionCode: region } } });
+  check('F9 ABGESCHLOSSEN→OFFEN (VL, mit Begründung)', wo.status === 'OFFEN' && pWo.status === 'OFFEN' && pWo.abgeschlossenAm === null);
+  check('AGM kann nach Wiedereröffnung wieder bestätigen', (await svc.bestaetigen(periode, region, agm)).status === 'BESTAETIGT');
+
+  // Kaskade: 07 + 08 zusätzlich öffnen (Restmonate haben Budgetzeilen), dann nur die jüngste abschließen.
+  await svc.oeffnePeriode('2026-07', region, admin);
+  await svc.oeffnePeriode('2026-08', region, admin);
+  const zu = await svc.abschliessen('2026-08', region, admin);
+  const alleZu = await prisma.forecastPeriode.findMany({ where: { regionCode: region }, orderBy: [{ jahr: 'asc' }, { monat: 'asc' }] });
+  check(
+    'Kaskade abwärts: Abschluss 2026-08 schließt 06/07 mit',
+    zu.abgeschlossen.join(',') === '2026-06,2026-07,2026-08' && alleZu.every((p) => p.status === 'ABGESCHLOSSEN'),
+  );
+
+  // Kaskade aufwärts: die älteste wieder öffnen -> jüngere gehen mit auf (keine Lücken).
+  const auf = await svc.wiederOeffnen('2026-06', region, vl, 'Ist-Korrektur Juni');
+  const alleAuf = await prisma.forecastPeriode.findMany({ where: { regionCode: region } });
+  check(
+    'Kaskade aufwärts: Wiedereröffnung 2026-06 öffnet 07/08 mit',
+    auf.wiederGeoeffnet.sort().join(',') === '2026-06,2026-07,2026-08' &&
+      alleAuf.every((p) => p.status === 'OFFEN' && p.abgeschlossenAm === null),
+  );
 
   let blocked = false;
   try {
