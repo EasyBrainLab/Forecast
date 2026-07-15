@@ -23,6 +23,7 @@
     "verify:forecast-wf": "ts-node --transpile-only scripts/verify-forecast-workflow.ts",
     "verify:sales-import": "ts-node --transpile-only scripts/verify-sales-import.ts",
     "verify:kundenabgleich": "ts-node --transpile-only scripts/verify-kundenabgleich.ts",
+    "verify:sales-analytik": "ts-node --transpile-only scripts/verify-sales-analytik.ts",
     "verify:dashboard": "ts-node --transpile-only scripts/verify-dashboard.ts",
     "verify:export": "ts-node --transpile-only scripts/verify-export.ts",
     "verify:absatz": "ts-node --transpile-only scripts/verify-absatz.ts",
