@@ -2,7 +2,6 @@ import { ArrayMaxSize, IsArray, IsEmail, IsIn, IsOptional, IsString, MaxLength, 
 import { ALLE_ROLLEN } from '../common/decorators/roles.decorator';
 
 const ROLLEN = ALLE_ROLLEN as string[];
-const STATUS = ['EINGELADEN', 'VERIFIZIERT', 'DEAKTIVIERT'];
 
 export class CreateUserDto {
   @IsEmail()
@@ -35,7 +34,11 @@ export class UpdateUserDto {
   @IsIn(ROLLEN)
   rolle?: string;
 
+  // Region-Zuordnung (Kostenstellen-Scope). Nur relevant, wenn die Zielrolle AGM ist; wird als
+  // Sollzustand interpretiert (fehlende Regionen werden soft-geschlossen, neue angelegt).
   @IsOptional()
-  @IsIn(STATUS)
-  status?: string;
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  regionCodes?: string[];
 }
