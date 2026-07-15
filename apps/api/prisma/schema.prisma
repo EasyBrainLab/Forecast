@@ -824,6 +824,7 @@ model CustomerSite {
   status         CustomerSiteStatus @default(NEU)
   notiz          String?
   quellNamen     String[]           @default([]) // zugeordnete SOL_DELIVERYADDRESSNAME-Varianten (Matching-Historie)
+  d365Konten     String[]           @default([]) // verknüpfte D365-Konten als "<dataAreaId>|<kundennummer>" (Kundenstamm-Abgleich)
   erstelltAm     DateTime           @default(now())
   aktualisiertAm DateTime           @updatedAt
 
