@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Button, Card } from '@/components/ui';
+import { PeriodenAktionen } from '@/components/perioden-aktionen';
 import { monKurz } from '@/lib/monate';
 
 interface Periode {
@@ -216,11 +217,14 @@ export default function ForecastMonatlichPage() {
               <span className="ml-2 rounded bg-gray-100 px-2 py-0.5 text-xs">{matrix.status}</span>
               <span className="ml-2 text-xs text-gray-400">{t('monatsSchwellwert', { schwelle })}</span>
             </div>
-            {matrix.status === 'OFFEN' && user?.rolle === 'AGM' && Object.keys(edits).length === 0 && (
-              <Button onClick={() => bestaetigen.mutate()} disabled={bestaetigen.isPending}>
-                {bestaetigen.isPending ? t('bestaetigt') : t('bestaetigen')}
-              </Button>
-            )}
+            <div className="flex flex-wrap items-start gap-2">
+              {matrix.status === 'OFFEN' && user?.rolle === 'AGM' && Object.keys(edits).length === 0 && (
+                <Button onClick={() => bestaetigen.mutate()} disabled={bestaetigen.isPending}>
+                  {bestaetigen.isPending ? t('bestaetigt') : t('bestaetigen')}
+                </Button>
+              )}
+              <PeriodenAktionen periode={matrix.periode} regionCode={matrix.regionCode} status={matrix.status} />
+            </div>
           </div>
 
           <div className="overflow-x-auto">

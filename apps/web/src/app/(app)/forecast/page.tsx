@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Ampel, Button, Card, Input, keur, prozent } from '@/components/ui';
+import { PeriodenAktionen } from '@/components/perioden-aktionen';
 
 interface Periode {
   id: string;
@@ -153,11 +154,14 @@ export default function ForecastPage() {
               <span className="ml-2 rounded bg-gray-100 px-2 py-0.5 text-xs">{matrix.status}</span>
               <span className="ml-2 text-xs text-gray-400">{t('schwellwert', { prozent: matrix.schwellwertProzent })}</span>
             </div>
-            {matrix.status === 'OFFEN' && user?.rolle === 'AGM' && Object.keys(edits).length === 0 && (
-              <Button onClick={() => bestaetigen.mutate()} disabled={bestaetigen.isPending}>
-                {bestaetigen.isPending ? t('bestaetigt') : t('bestaetigen')}
-              </Button>
-            )}
+            <div className="flex flex-wrap items-start gap-2">
+              {matrix.status === 'OFFEN' && user?.rolle === 'AGM' && Object.keys(edits).length === 0 && (
+                <Button onClick={() => bestaetigen.mutate()} disabled={bestaetigen.isPending}>
+                  {bestaetigen.isPending ? t('bestaetigt') : t('bestaetigen')}
+                </Button>
+              )}
+              <PeriodenAktionen periode={matrix.periode} regionCode={matrix.regionCode} status={matrix.status} />
+            </div>
           </div>
 
           <div className="overflow-x-auto">

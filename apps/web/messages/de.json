@@ -178,7 +178,15 @@
     "begruendungPlaceholder": "Begründung der Abweichung (Pflicht)…",
     "speichern": "{anzahl} Zelle(n) speichern",
     "speichert": "Speichere…",
-    "verwerfen": "Verwerfen"
+    "verwerfen": "Verwerfen",
+    "abschliessen": "Periode abschließen",
+    "abschliessenBusy": "Schließe ab…",
+    "abschliessenFrage": "Periode {periode} abschließen? Damit werden auch alle älteren noch offenen Perioden dieser Region abgeschlossen.",
+    "wiederOeffnen": "Wieder öffnen",
+    "wiederOeffnenBusy": "Öffne…",
+    "wiederOeffnenHinweis": "Öffnet auch alle jüngeren abgeschlossenen Perioden dieser Region, damit keine Lücke entsteht. Der AGM kann danach wieder bearbeiten.",
+    "wiederOeffnenBegruendung": "Begründung für die Wiedereröffnung (Pflicht)…",
+    "abbrechen": "Abbrechen"
   },
   "tender": {
     "titel": "Ausschreibungen / Tender",

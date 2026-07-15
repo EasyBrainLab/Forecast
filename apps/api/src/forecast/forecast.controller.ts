@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ALLE_ROLLEN, Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, type RequestUser } from '../common/decorators/current-user.decorator';
 import { ForecastService } from './forecast.service';
-import { AnpassenDto, OeffnePeriodeDto, ZurueckweisenDto } from './forecast.dto';
+import { AnpassenDto, OeffnePeriodeDto, WiederOeffnenDto, ZurueckweisenDto } from './forecast.dto';
 import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('forecast')
@@ -59,5 +59,19 @@ export class ForecastController {
   @Post(':periode/:regionCode/zurueckweisen')
   zurueckweisen(@Param('periode') periode: string, @Param('regionCode') regionCode: string, @Body() dto: ZurueckweisenDto, @CurrentUser() aktor: RequestUser) {
     return this.service.zurueckweisen(periode, regionCode, aktor, dto.begruendung);
+  }
+
+  /** F6/F7/F8 — schließt die Periode und kaskadierend alle älteren offenen Perioden der Region. */
+  @Roles('BU_LEITER', 'ADMIN')
+  @Post(':periode/:regionCode/abschliessen')
+  abschliessen(@Param('periode') periode: string, @Param('regionCode') regionCode: string, @CurrentUser() aktor: RequestUser) {
+    return this.service.abschliessen(periode, regionCode, aktor);
+  }
+
+  /** F9 — öffnet die Periode und kaskadierend alle jüngeren abgeschlossenen Perioden der Region. */
+  @Roles('VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN')
+  @Post(':periode/:regionCode/wieder-oeffnen')
+  wiederOeffnen(@Param('periode') periode: string, @Param('regionCode') regionCode: string, @Body() dto: WiederOeffnenDto, @CurrentUser() aktor: RequestUser) {
+    return this.service.wiederOeffnen(periode, regionCode, aktor, dto.begruendung);
   }
 }

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ForecastStatus } from '@prisma/client';
-import { EINSTELLUNG_KEYS, formatPeriode } from '@forecast/shared';
+import { EINSTELLUNG_KEYS } from '@forecast/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { infoMail } from '../mail/mail.templates';
@@ -46,22 +46,32 @@ export class ForecastScheduler {
     await Promise.all(leitung.map((u) => this.mail.send(u.email, infoMail('Eskalation: offene Forecasts', 'Überfällig', `Noch offen: ${liste}`))));
   }
 
-  // Monatlich 02:00 am 1. — Vormonat einfrieren (F6/F7/F8).
+  /**
+   * Monatlich 02:00 am 1. — alles bis einschließlich Vormonat einfrieren (F6/F7/F8).
+   * Je Region wird die jüngste noch offene Periode abgeschlossen; die Kaskade in `abschliessen` zieht
+   * die älteren mit. So bleiben keine Altperioden dauerhaft offen, wenn ein Lauf einmal ausfällt.
+   */
   @Cron('0 2 1 * *', { timeZone: 'Europe/Berlin' })
   async monatsabschluss(): Promise<void> {
     const jetzt = new Date();
     const vormonat = jetzt.getMonth() === 0 ? 12 : jetzt.getMonth();
     const jahr = jetzt.getMonth() === 0 ? jetzt.getFullYear() - 1 : jetzt.getFullYear();
-    const periode = formatPeriode(jahr, vormonat);
     const offen = await this.prisma.forecastPeriode.findMany({
-      where: { periode, status: { in: [ForecastStatus.OFFEN, ForecastStatus.BESTAETIGT, ForecastStatus.ANGEPASST] } },
+      where: {
+        status: { in: [ForecastStatus.OFFEN, ForecastStatus.BESTAETIGT, ForecastStatus.ANGEPASST] },
+        OR: [{ jahr: { lt: jahr } }, { jahr, monat: { lte: vormonat } }],
+      },
+      orderBy: [{ regionCode: 'asc' }, { jahr: 'desc' }, { monat: 'desc' }],
     });
     const sys = await this.prisma.user.findFirst({ where: { rolle: 'ADMIN' }, select: { id: true } });
     if (!sys) return;
     const system = { id: sys.id, email: 'SYSTEM', rolle: 'BU_LEITER' as const };
-    for (const p of offen) {
+    const juengstePro = new Map<string, (typeof offen)[number]>();
+    for (const p of offen) if (!juengstePro.has(p.regionCode)) juengstePro.set(p.regionCode, p);
+    for (const p of juengstePro.values()) {
       try {
-        await this.forecast.abschliessen(p.periode, p.regionCode, system);
+        const r = await this.forecast.abschliessen(p.periode, p.regionCode, system, { system: true });
+        this.logger.log(`Abschluss ${p.regionCode}: ${r.abgeschlossen.join(', ')}`);
       } catch (e) {
         this.logger.warn(`Abschluss ${p.periode}/${p.regionCode} fehlgeschlagen: ${(e as Error).message}`);
       }
