@@ -14,6 +14,7 @@ import { UsersModule } from './users/users.module';
 import { IstImportModule } from './ist-import/ist-import.module';
 import { SalesImportModule } from './sales-import/sales-import.module';
 import { KundenabgleichModule } from './kundenabgleich/kundenabgleich.module';
+import { SalesAnalytikModule } from './sales-analytik/sales-analytik.module';
 import { BudgetModule } from './budget/budget.module';
 import { ForecastModule } from './forecast/forecast.module';
 import { DashboardModule } from './dashboard/dashboard.module';
@@ -49,6 +50,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
     IstImportModule,
     SalesImportModule,
     KundenabgleichModule,
+    SalesAnalytikModule,
     BudgetModule,
     ForecastModule,
     DashboardModule,
