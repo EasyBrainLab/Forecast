@@ -1,7 +1,8 @@
 'use client';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { Button, Card, Input } from '@/components/ui';
 import { ROLLEN_LABEL, type Rolle } from '@/lib/auth';
 
@@ -11,9 +12,16 @@ interface User {
   name: string;
   rolle: Rolle;
   status: string;
+  regionCodes: string[];
 }
 
 const ROLLEN: Rolle[] = ['AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT'];
+
+const STATUS_BADGE: Record<string, string> = {
+  VERIFIZIERT: 'bg-ez-ampelGruen/20 text-ez-ampelGruen',
+  EINGELADEN: 'bg-ez-ampelGelb/20 text-yellow-700',
+  DEAKTIVIERT: 'bg-gray-200 text-gray-500',
+};
 
 interface Region {
   code: string;
@@ -23,20 +31,63 @@ interface Region {
 
 export default function UsersPage() {
   const qc = useQueryClient();
+  const { user: aktor } = useAuth();
   const { data: users } = useQuery({ queryKey: ['users'], queryFn: () => api.get<User[]>('/admin/users') });
   const { data: regionen } = useQuery({ queryKey: ['regionen'], queryFn: () => api.get<Region[]>('/stammdaten/regionen') });
+  const forecastRegionen = (regionen ?? []).filter((r) => r.forecastRelevant);
+
   const [form, setForm] = useState<{ email: string; name: string; rolle: Rolle; regionCodes: string[] }>({ email: '', name: '', rolle: 'AGM', regionCodes: [] });
   const [url, setUrl] = useState<string | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ rolle: Rolle; regionCodes: string[] }>({ rolle: 'AGM', regionCodes: [] });
+  const [fehler, setFehler] = useState('');
+
+  const reload = () => qc.invalidateQueries({ queryKey: ['users'] });
+  const fehlerVon = (e: unknown) => setFehler(e instanceof ApiError ? e.message : 'Aktion fehlgeschlagen.');
+
   const invite = useMutation({
     mutationFn: () => api.post<{ einladungUrl: string }>('/admin/users', form),
     onSuccess: (res) => {
       setUrl(res.einladungUrl);
       setForm({ email: '', name: '', rolle: 'AGM', regionCodes: [] });
-      qc.invalidateQueries({ queryKey: ['users'] });
+      reload();
     },
   });
-  const toggleRegion = (code: string): void =>
-    setForm((f) => ({ ...f, regionCodes: f.regionCodes.includes(code) ? f.regionCodes.filter((c) => c !== code) : [...f.regionCodes, code] }));
+
+  const speichern = useMutation({
+    mutationFn: (u: User) => api.patch(`/admin/users/${u.id}`, { rolle: draft.rolle, regionCodes: draft.rolle === 'AGM' ? draft.regionCodes : [] }),
+    onSuccess: () => {
+      setEditId(null);
+      setFehler('');
+      reload();
+    },
+    onError: fehlerVon,
+  });
+
+  const aktion = useMutation({
+    mutationFn: ({ id, was }: { id: string; was: 'deaktivieren' | 'reaktivieren' | 'reinvite' }) => api.post(`/admin/users/${id}/${was}`),
+    onSuccess: () => {
+      setFehler('');
+      reload();
+    },
+    onError: fehlerVon,
+  });
+
+  const loeschen = useMutation({
+    mutationFn: (id: string) => api.del(`/admin/users/${id}`),
+    onSuccess: () => {
+      setFehler('');
+      reload();
+    },
+    onError: fehlerVon,
+  });
+
+  const toggle = (list: string[], code: string) => (list.includes(code) ? list.filter((c) => c !== code) : [...list, code]);
+  const starteEdit = (u: User) => {
+    setEditId(u.id);
+    setDraft({ rolle: u.rolle, regionCodes: u.regionCodes });
+    setFehler('');
+  };
 
   return (
     <div className="space-y-6">
@@ -66,9 +117,9 @@ export default function UsersPage() {
             <div className="rounded border border-gray-200 bg-gray-50 p-3">
               <div className="mb-2 text-sm font-medium">Region(en) / Kostenstellen-Zuordnung für diesen AGM</div>
               <div className="flex flex-wrap gap-3">
-                {(regionen ?? []).filter((r) => r.forecastRelevant).map((r) => (
+                {forecastRegionen.map((r) => (
                   <label key={r.code} className="flex items-center gap-1.5 text-sm">
-                    <input type="checkbox" checked={form.regionCodes.includes(r.code)} onChange={() => toggleRegion(r.code)} />
+                    <input type="checkbox" checked={form.regionCodes.includes(r.code)} onChange={() => setForm((f) => ({ ...f, regionCodes: toggle(f.regionCodes, r.code) }))} />
                     {r.code} — {r.bezeichnung}
                   </label>
                 ))}
@@ -88,25 +139,110 @@ export default function UsersPage() {
         )}
       </Card>
 
+      {fehler && <p className="rounded bg-ez-accent/10 p-2 text-sm text-ez-accent">{fehler}</p>}
+
       <Card className="overflow-x-auto p-0">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-left text-gray-600">
             <tr>
               <th className="p-3">Name</th>
               <th className="p-3">E-Mail</th>
-              <th className="p-3">Rolle</th>
+              <th className="p-3">Rolle / Region</th>
               <th className="p-3">Status</th>
+              <th className="p-3 text-right">Aktionen</th>
             </tr>
           </thead>
           <tbody>
-            {users?.map((u) => (
-              <tr key={u.id} className="border-t">
-                <td className="p-3">{u.name}</td>
-                <td className="p-3">{u.email}</td>
-                <td className="p-3">{ROLLEN_LABEL[u.rolle]}</td>
-                <td className="p-3">{u.status}</td>
-              </tr>
-            ))}
+            {users?.map((u) => {
+              const bearbeitet = editId === u.id;
+              const selbst = u.id === aktor?.id;
+              const aktiv = u.status !== 'DEAKTIVIERT';
+              return (
+                <tr key={u.id} className="border-t align-top">
+                  <td className="p-3">{u.name}</td>
+                  <td className="p-3 text-gray-500">{u.email}</td>
+                  <td className="p-3">
+                    {bearbeitet ? (
+                      <div className="space-y-2">
+                        <select className="rounded border border-gray-300 px-2 py-1 text-sm" value={draft.rolle} onChange={(e) => setDraft((d) => ({ ...d, rolle: e.target.value as Rolle }))}>
+                          {ROLLEN.map((r) => (
+                            <option key={r} value={r}>
+                              {ROLLEN_LABEL[r]}
+                            </option>
+                          ))}
+                        </select>
+                        {draft.rolle === 'AGM' && (
+                          <div className="flex flex-wrap gap-2 rounded border border-gray-200 bg-gray-50 p-2">
+                            {forecastRegionen.map((r) => (
+                              <label key={r.code} className="flex items-center gap-1 text-xs">
+                                <input type="checkbox" checked={draft.regionCodes.includes(r.code)} onChange={() => setDraft((d) => ({ ...d, regionCodes: toggle(d.regionCodes, r.code) }))} />
+                                {r.code}
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div>
+                        <span>{ROLLEN_LABEL[u.rolle]}</span>
+                        {u.rolle === 'AGM' && <span className="ml-1 text-xs text-gray-400">({u.regionCodes.join(', ') || 'keine Region'})</span>}
+                      </div>
+                    )}
+                  </td>
+                  <td className="p-3">
+                    <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[u.status] ?? 'bg-gray-100'}`}>{u.status}</span>
+                  </td>
+                  <td className="p-3">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {bearbeitet ? (
+                        <>
+                          <Button
+                            className="px-2 py-1 text-xs"
+                            disabled={speichern.isPending || (draft.rolle === 'AGM' && draft.regionCodes.length === 0)}
+                            onClick={() => speichern.mutate(u)}
+                          >
+                            Speichern
+                          </Button>
+                          <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => setEditId(null)}>
+                            Abbrechen
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => starteEdit(u)}>
+                            Rolle/Region
+                          </Button>
+                          {u.status === 'EINGELADEN' && (
+                            <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => aktion.mutate({ id: u.id, was: 'reinvite' })}>
+                              Erneut einladen
+                            </Button>
+                          )}
+                          {aktiv ? (
+                            <Button variant="ghost" className="px-2 py-1 text-xs" disabled={selbst} onClick={() => aktion.mutate({ id: u.id, was: 'deaktivieren' })}>
+                              Deaktivieren
+                            </Button>
+                          ) : (
+                            <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => aktion.mutate({ id: u.id, was: 'reaktivieren' })}>
+                              Reaktivieren
+                            </Button>
+                          )}
+                          <Button
+                            variant="danger"
+                            className="px-2 py-1 text-xs"
+                            disabled={selbst}
+                            onClick={() => {
+                              if (window.confirm(`Nutzer „${u.name}" wirklich löschen? Nur möglich, wenn keine Historie existiert — sonst bitte deaktivieren.`)) loeschen.mutate(u.id);
+                            }}
+                          >
+                            Löschen
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </Card>

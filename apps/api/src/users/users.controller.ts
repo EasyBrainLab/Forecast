@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, type RequestUser } from '../common/decorators/current-user.decorator';
@@ -39,5 +39,23 @@ export class UsersController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateUserDto, @CurrentUser() aktor: RequestUser) {
     return this.users.update(id, dto, aktor);
+  }
+
+  @Roles('ADMIN')
+  @Post(':id/deaktivieren')
+  deaktivieren(@Param('id') id: string, @CurrentUser() aktor: RequestUser) {
+    return this.users.deaktivieren(id, aktor);
+  }
+
+  @Roles('ADMIN')
+  @Post(':id/reaktivieren')
+  reaktivieren(@Param('id') id: string, @CurrentUser() aktor: RequestUser) {
+    return this.users.reaktivieren(id, aktor);
+  }
+
+  @Roles('ADMIN')
+  @Delete(':id')
+  remove(@Param('id') id: string, @CurrentUser() aktor: RequestUser) {
+    return this.users.remove(id, aktor);
   }
 }
