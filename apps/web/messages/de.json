@@ -51,7 +51,8 @@
       "ADMIN": "Administration",
       "SUPPORT": "Support"
     },
-    "ki": "KI & Ausschreibungen"
+    "ki": "KI & Ausschreibungen",
+    "kundenabgleich": "Kundenstamm-Abgleich"
   },
   "login": {
     "titel": "Forecast-Portal",
