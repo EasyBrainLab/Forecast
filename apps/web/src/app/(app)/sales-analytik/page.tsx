@@ -43,6 +43,9 @@ export default function SalesAnalytikPage() {
   const [result, setResult] = useState<{ zeilen: Record<string, unknown>[]; parameter: Record<string, unknown> } | null>(null);
   const [fehler, setFehler] = useState('');
   const [laedt, setLaedt] = useState(false);
+  const [kiFrage, setKiFrage] = useState('');
+  const [kiAntwort, setKiAntwort] = useState<{ analyseTyp: string; erklaerung: string; antwort: string } | null>(null);
+  const [kiLaedt, setKiLaedt] = useState(false);
 
   const { data: opt } = useQuery({ queryKey: ['analytik-opt'], queryFn: () => api.get<FilterOpt>('/sales-analytik/filteroptionen') });
   const { data: kunden } = useQuery({ queryKey: ['analytik-kunden'], queryFn: () => api.get<Kunde[]>('/sales-analytik/kunden') });
@@ -71,6 +74,31 @@ export default function SalesAnalytikPage() {
       setFehler(e instanceof ApiError ? e.message : 'Auswertung fehlgeschlagen.');
     } finally {
       setLaedt(false);
+    }
+  };
+
+  const frageStellen = async () => {
+    if (!kiFrage.trim()) return;
+    setFehler('');
+    setKiLaedt(true);
+    setKiAntwort(null);
+    setResult(null);
+    try {
+      const res = await api.post<{ analyseTyp: Typ | 'unbekannt'; erklaerung: string; antwort: string; ergebnis: { typ: Typ; parameter: Record<string, unknown>; zeilen: Record<string, unknown>[] } | null }>('/sales-ki/frage', { frage: kiFrage });
+      setKiAntwort({ analyseTyp: res.analyseTyp, erklaerung: res.erklaerung, antwort: res.antwort });
+      if (res.ergebnis) {
+        const par = res.ergebnis.parameter;
+        setTyp(res.ergebnis.typ);
+        if (typeof par.jahrVon === 'number') setJahrVon(par.jahrVon);
+        if (typeof par.jahrBis === 'number') setJahrBis(par.jahrBis);
+        if (par.dimension === 'kunde' || par.dimension === 'produkt') setDimension(par.dimension);
+        if (typeof par.waehrung === 'string') setWaehrung(par.waehrung);
+        setResult({ zeilen: res.ergebnis.zeilen, parameter: par });
+      }
+    } catch (e) {
+      setFehler(e instanceof ApiError ? e.message : 'KI-Anfrage fehlgeschlagen.');
+    } finally {
+      setKiLaedt(false);
     }
   };
 
@@ -113,6 +141,27 @@ export default function SalesAnalytikPage() {
         <h1 className="text-2xl font-bold text-ez-primary">Sales-Analytik</h1>
         <p className="text-sm text-gray-500">Kundenscharfe Auswertungen aus den D365-Rechnungsdaten. Beträge in kEUR; je Auswertung eine Währung (keine Vermischung). Umsatz ist netto inkl. Gutschriften.</p>
       </div>
+
+      <Card className="space-y-2">
+        <h2 className="font-semibold text-ez-primary">Frage stellen</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            className={`${INP} min-w-[280px] flex-1`}
+            placeholder="z. B. Welche Kunden zahlen seit über 3 Jahren denselben Preis?"
+            value={kiFrage}
+            onChange={(e) => setKiFrage(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') frageStellen(); }}
+          />
+          <Button onClick={frageStellen} disabled={kiLaedt || !kiFrage.trim()}>{kiLaedt ? 'Denkt nach…' : 'Fragen'}</Button>
+        </div>
+        {kiAntwort && (
+          <div className="rounded border border-ez-primary/30 bg-ez-primary/5 p-3 text-sm">
+            <p className="font-medium text-gray-800">{kiAntwort.antwort}</p>
+            {kiAntwort.erklaerung && <p className="mt-1 text-xs text-gray-500">Interpretation: {kiAntwort.erklaerung}</p>}
+          </div>
+        )}
+        <p className="text-xs text-gray-400">Die KI wählt nur eine der Auswertungen unten und deren Parameter — die Zahlen kommen aus der Datenbank, nicht aus dem Sprachmodell.</p>
+      </Card>
 
       <Card className="space-y-3">
         <div className="flex flex-wrap gap-2">
