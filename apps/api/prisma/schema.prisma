@@ -90,6 +90,11 @@ enum QuarantaeneGrund {
   UNBEKANNTER_MONAT
   RECID_DUP_IN_DATEI
   COMPANY_UNBEKANNT
+  RECID_LEER
+  SCHLUESSEL_LEER
+  SCHLUESSEL_DUP_IN_DATEI
+  RECHNUNG_OHNE_KOPF
+  DATUM_UNGUELTIG
 }
 
 enum AuditAktion {
@@ -434,10 +439,13 @@ model ImportBatch {
   erstelltAm          DateTime     @default(now())
   abgeschlossenAm     DateTime?
 
-  ausgeloestVon User                @relation(fields: [ausgeloestVonId], references: [id])
+  ausgeloestVon User                        @relation(fields: [ausgeloestVonId], references: [id])
   istUmsaetze   IstUmsatz[]
   quarantaene   ImportQuarantaene[]
   absaetze      Absatz[]
+  kundenstamm   Kundenstamm[]
+  rechnungen    Verkaufsrechnung[]
+  positionen    Verkaufsrechnungsposition[]
 
   @@index([hash])
   @@index([status])
@@ -463,6 +471,83 @@ model ImportQuarantaene {
   @@index([importBatchId])
   @@index([status])
   @@map("import_quarantaene")
+}
+
+// ─────────────── SALES (D365-Import: Kundenstamm + Rechnungen — kundenscharfe Umsatz/Preis/Menge) ───────────────
+
+/// D365-Kundenstamm (CustCustomerV3). Schlüssel = Gesellschaft + Kundennummer (CUSTOMERACCOUNT je DATAAREAID eindeutig).
+model Kundenstamm {
+  id             String   @id @default(uuid())
+  kundennummer   String // CUSTOMERACCOUNT
+  dataAreaId     String // DATAAREAID (BBD/BBE/BBF)
+  name           String // ORGANIZATIONNAME
+  kundengruppe   String? // CUSTOMERGROUPID
+  landIso        String? // ADDRESSCOUNTRYREGIONISOCODE
+  stadt          String? // ADDRESSCITY
+  plz            String? // ADDRESSZIPCODE
+  strasse        String? // ADDRESSSTREET
+  waehrung       String? // SALESCURRENCYCODE
+  typ            String? // CUSTOMERTYPE
+  rohdaten       Json // vollständige Exportzeile (311 Spalten) für spätere Auswertung
+  importBatchId  String
+  erstelltAm     DateTime @default(now())
+  aktualisiertAm DateTime @updatedAt
+
+  importBatch ImportBatch @relation(fields: [importBatchId], references: [id])
+
+  @@unique([dataAreaId, kundennummer])
+  @@index([landIso])
+  @@index([kundengruppe])
+  @@map("kundenstamm")
+}
+
+/// Rechnungskopf (dboSalesInvoiceHeader). Verknüpft Rechnung → Kunde. Idempotenz über RECID.
+model Verkaufsrechnung {
+  id              String   @id @default(uuid())
+  recid           String   @unique
+  rechnungsnummer String // INVOICENUMBER
+  dataAreaId      String // DATAAREAID
+  kundennummer    String // INVOICECUSTOMERACCOUNTNUMBER
+  rechnungsdatum  DateTime // INVOICEDATE_Date
+  waehrung        String // CURRENCYCODE
+  betragGesamt    Decimal  @db.Decimal(15, 2) // TOTALINVOICEAMOUNT (voller EUR bzw. Originalwährung)
+  landIso         String? // INVOICEADDRESSCOUNTRYREGIONISOCODE
+  stadt           String? // INVOICEADDRESSCITY
+  importBatchId   String
+  erstelltAm      DateTime @default(now())
+
+  importBatch ImportBatch @relation(fields: [importBatchId], references: [id])
+
+  @@unique([dataAreaId, rechnungsnummer])
+  @@index([kundennummer])
+  @@index([rechnungsdatum])
+  @@map("verkaufsrechnung")
+}
+
+/// Rechnungsposition (dboSalesInvoiceLines). kundennummer + rechnungsdatum aus dem Kopf denormalisiert
+/// (Zeitreihen ohne Join). Idempotenz über RECID.
+model Verkaufsrechnungsposition {
+  id              String   @id @default(uuid())
+  recid           String   @unique
+  rechnungsnummer String // INVOICENUMBER
+  dataAreaId      String // DATAAREAID
+  kundennummer    String // denormalisiert aus Verkaufsrechnung
+  rechnungsdatum  DateTime // INVOICEDATE_Date
+  produktnummer   String? // PRODUCTNUMBER (leer bei Fracht/Provision)
+  produktname     String? // PRODUCTNAME / PRODUCTDESCRIPTION
+  menge           Decimal  @db.Decimal(15, 2) // INVOICEDQUANTITY
+  verkaufspreis   Decimal  @db.Decimal(15, 4) // SALESPRICE (Stückpreis)
+  betrag          Decimal  @db.Decimal(15, 2) // LINEAMOUNT
+  waehrung        String // CURRENCYCODE
+  importBatchId   String
+  erstelltAm      DateTime @default(now())
+
+  importBatch ImportBatch @relation(fields: [importBatchId], references: [id])
+
+  @@index([kundennummer, produktnummer, rechnungsdatum])
+  @@index([produktnummer])
+  @@index([dataAreaId, rechnungsnummer])
+  @@map("verkaufsrechnung_position")
 }
 
 // ─────────────── AUDIT (append-only) ───────────────
@@ -838,10 +923,10 @@ model ReportEintrag {
   sortierung Int      @default(0)
   erstelltAm DateTime @default(now())
 
-  report       MonthlyReport   @relation(fields: [reportId], references: [id], onDelete: Cascade)
-  customerSite CustomerSite?   @relation(fields: [customerSiteId], references: [id], onDelete: SetNull)
-  competitor   Competitor?     @relation(fields: [competitorId], references: [id], onDelete: SetNull)
-  tender       Tender?         @relation(fields: [tenderId], references: [id], onDelete: SetNull)
+  report       MonthlyReport    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  customerSite CustomerSite?    @relation(fields: [customerSiteId], references: [id], onDelete: SetNull)
+  competitor   Competitor?      @relation(fields: [competitorId], references: [id], onDelete: SetNull)
+  tender       Tender?          @relation(fields: [tenderId], references: [id], onDelete: SetNull)
   e1           ProduktgruppeE1? @relation(fields: [e1Id], references: [id])
 
   @@index([reportId])
@@ -860,23 +945,23 @@ enum VoiceStatus {
 }
 
 model VoiceSession {
-  id            String      @id @default(uuid())
-  periode       String // "JJJJ-MM" (Berichtsmonat, dem das Diktat gilt)
-  regionCode    String
-  userId        String
-  userEmail     String // denormalisiert (Audit)
-  sprache       String? // erkannte/gesetzte Sprache (de/en/es/pt/fr)
-  status        VoiceStatus @default(TRANSKRIBIERT)
-  audio         Bytes? // Rohaufnahme; null nach Löschung gemäß AUDIO_AUFBEWAHRUNG
-  audioMimeType String?
-  audioGroesse  Int         @default(0)
-  transkript    String // STT-Ergebnis (bleibt als Quelle/Audit erhalten)
-  extraktion    Json? // strukturiertes LLM-Ergebnis inkl. Zahlen-Guardrail-Liste
-  sttProvider   String?
-  llmModell     String?
-  bestaetigtAm  DateTime?
-  erstelltAm    DateTime    @default(now())
-  aktualisiertAm DateTime   @updatedAt
+  id             String      @id @default(uuid())
+  periode        String // "JJJJ-MM" (Berichtsmonat, dem das Diktat gilt)
+  regionCode     String
+  userId         String
+  userEmail      String // denormalisiert (Audit)
+  sprache        String? // erkannte/gesetzte Sprache (de/en/es/pt/fr)
+  status         VoiceStatus @default(TRANSKRIBIERT)
+  audio          Bytes? // Rohaufnahme; null nach Löschung gemäß AUDIO_AUFBEWAHRUNG
+  audioMimeType  String?
+  audioGroesse   Int         @default(0)
+  transkript     String // STT-Ergebnis (bleibt als Quelle/Audit erhalten)
+  extraktion     Json? // strukturiertes LLM-Ergebnis inkl. Zahlen-Guardrail-Liste
+  sttProvider    String?
+  llmModell      String?
+  bestaetigtAm   DateTime?
+  erstelltAm     DateTime    @default(now())
+  aktualisiertAm DateTime    @updatedAt
 
   @@index([periode, regionCode])
   @@index([status])
