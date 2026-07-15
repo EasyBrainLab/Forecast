@@ -22,6 +22,8 @@ interface Bericht {
   seedsVorjahr?: number;
   zeilenImportiert?: number;
   uebersprungeneZeilen?: { zeile: number; kunde: string; land: string; grund: string }[];
+  typ?: string;
+  detail?: Record<string, unknown>;
 }
 interface Uebersicht {
   ist: { zeilen: number; summeEur: number; jahre: { jahr: number; zeilen: number }[]; letzterImport: { dateiname: string; status: string; zeilenNeu: number; erstelltAm: string } | null };
@@ -175,7 +177,7 @@ function ImportKachel({ titel, beschreibung, endpoint, accept }: { titel: string
                   </>
                 )}
               </li>
-              <li>Σ Umsatz: <strong>{eur(b.summeGesamtEur)} €</strong></li>
+              {b.summeGesamtEur !== undefined && <li>Σ Umsatz: <strong>{eur(b.summeGesamtEur)} €</strong></li>}
             </ul>
           ) : (
             <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-700 sm:grid-cols-3">
@@ -183,6 +185,11 @@ function ImportKachel({ titel, beschreibung, endpoint, accept }: { titel: string
               <li>Regionsreserve: <strong>{eur(b.reserveZeilen)}</strong></li>
               <li>Quarantäne: <strong>{eur(b.zeilenQuarantaene)}</strong></li>
             </ul>
+          )}
+          {b.detail && (
+            <div className="text-xs text-gray-500">
+              {Object.entries(b.detail).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ')}
+            </div>
           )}
           {nichtsNeu && (
             <p className="text-gray-600">ℹ️ Diese Daten waren bereits vollständig im System vorhanden — es wurde nichts Neues importiert (idempotent). Die Werte stehen der Anwendung zur Verfügung.</p>
@@ -251,6 +258,29 @@ export default function ImportPage() {
         beschreibung="Verkaufsmengen je Land/Kunde (Power-BI-Export SF_MM_MM_JJJJ…). Periode wird aus dem Dateinamen erkannt; Vorjahr ist in der Datei enthalten."
         endpoint="/absatz/import"
         accept=".csv"
+      />
+
+      <div className="pt-2">
+        <h2 className="text-sm font-semibold text-ez-primary">Sales-Daten (Dynamics 365)</h2>
+        <p className="text-xs text-gray-500">Kundenscharfe Rechnungsdaten für die Sales-Analytik. Reihenfolge: erst Kundenstamm & Rechnungsköpfe, dann Positionen (verknüpfen sich über die Rechnungsnummer). Alle idempotent — mehrfacher Upload ist unschädlich.</p>
+      </div>
+      <ImportKachel
+        titel="Kundenstamm (Excel)"
+        beschreibung="D365 CustCustomerV3 — Kundennummer, Name, Gruppe, Land, Währung. Schlüssel: Gesellschaft + Kundennummer."
+        endpoint="/sales-import/kundenstamm"
+        accept=".xlsx"
+      />
+      <ImportKachel
+        titel="Rechnungsköpfe (Excel)"
+        beschreibung="D365 SalesInvoiceHeader — verknüpft Rechnung mit Kunde. Idempotent über RECID."
+        endpoint="/sales-import/rechnungen"
+        accept=".xlsx"
+      />
+      <ImportKachel
+        titel="Rechnungspositionen (Excel)"
+        beschreibung="D365 SalesInvoiceLines — Produkt, Menge, Verkaufspreis, Betrag je Zeile (~130k). Bitte zuerst die Rechnungsköpfe importieren."
+        endpoint="/sales-import/positionen"
+        accept=".xlsx"
       />
     </div>
   );
