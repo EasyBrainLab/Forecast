@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Button, Card } from '@/components/ui';
+import { DataTable, type Column } from '@/components/data-table';
 
 interface Region {
   code: string;
@@ -76,46 +77,33 @@ export default function KundeRegionPage() {
         ) : unmapped.kunden.length === 0 ? (
           <p className="text-sm text-ez-ampelGruen">✓ Alle Kunden der jüngsten Periode sind zugeordnet.</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="text-left text-gray-500">
-              <tr>
-                <th className="py-1">Kunde</th>
-                <th className="py-1 text-right">Seeds</th>
-                <th className="py-1">Region</th>
-                <th className="py-1"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {unmapped.kunden.map((k) => (
-                <tr key={k.kunde} className="border-t">
-                  <td className="py-1 pr-2">{k.kunde}</td>
-                  <td className="py-1 text-right tabular-nums">{fmt(k.seeds)}</td>
-                  <td className="py-1">
-                    <select
-                      className="rounded border border-gray-300 px-2 py-1 text-sm"
-                      value={auswahl[k.kunde] ?? ''}
-                      onChange={(e) => setAuswahl((a) => ({ ...a, [k.kunde]: e.target.value }))}
-                    >
-                      <option value="">— wählen —</option>
-                      {regionen?.map((r) => (
-                        <option key={r.code} value={r.code}>
-                          {r.code} · {r.bezeichnung}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="py-1 text-right whitespace-nowrap">
-                    <Button variant="ghost" className="px-2 py-1 text-xs" disabled={!auswahl[k.kunde]} onClick={() => speichern(k.kunde)}>
-                      Zuordnen
-                    </Button>
-                    <Button variant="ghost" className="ml-1 px-2 py-1 text-xs text-ez-accent" onClick={() => loeschenMitConfirm(k.kunde)}>
-                      Löschen
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataTable
+            rows={unmapped.kunden}
+            rowKey={(k) => k.kunde}
+            initialSort={{ key: 'seeds', dir: 'desc' }}
+            columns={[
+              { key: 'kunde', label: 'Kunde', value: (k) => k.kunde },
+              { key: 'seeds', label: 'Seeds', filter: 'none', align: 'right', value: (k) => k.seeds, render: (k) => fmt(k.seeds) },
+              {
+                key: 'region', label: 'Region', filter: 'none', sortable: false,
+                render: (k) => (
+                  <select className="rounded border border-gray-300 px-2 py-1 text-sm" value={auswahl[k.kunde] ?? ''} onChange={(e) => setAuswahl((a) => ({ ...a, [k.kunde]: e.target.value }))}>
+                    <option value="">— wählen —</option>
+                    {regionen?.map((r) => <option key={r.code} value={r.code}>{r.code} · {r.bezeichnung}</option>)}
+                  </select>
+                ),
+              },
+              {
+                key: 'aktion', label: '', filter: 'none', sortable: false, align: 'right',
+                render: (k) => (
+                  <span className="whitespace-nowrap">
+                    <Button variant="ghost" className="px-2 py-1 text-xs" disabled={!auswahl[k.kunde]} onClick={() => speichern(k.kunde)}>Zuordnen</Button>
+                    <Button variant="ghost" className="ml-1 px-2 py-1 text-xs text-ez-accent" onClick={() => loeschenMitConfirm(k.kunde)}>Löschen</Button>
+                  </span>
+                ),
+              },
+            ] satisfies Column<Unmapped['kunden'][number]>[]}
+          />
         )}
       </Card>
 
@@ -124,43 +112,31 @@ export default function KundeRegionPage() {
         {!mappings || mappings.length === 0 ? (
           <p className="text-sm text-gray-500">Noch keine Zuordnungen.</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="text-left text-gray-500">
-              <tr>
-                <th className="py-1">Kunde</th>
-                <th className="py-1">Region</th>
-                <th className="py-1"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {mappings.map((m) => (
-                <tr key={m.id} className="border-t">
-                  <td className="py-1">{m.kunde}</td>
-                  <td className="py-1">
-                    <select
-                      className="rounded border border-gray-300 px-2 py-1 text-sm"
-                      value={m.regionCode}
-                      onChange={(e) => upsert.mutate({ kunde: m.kunde, regionCode: e.target.value })}
-                    >
-                      {regionen?.map((r) => (
-                        <option key={r.code} value={r.code}>
-                          {r.code} · {r.bezeichnung}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="py-1 text-right whitespace-nowrap">
-                    <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => entfernen.mutate(m.kunde)}>
-                      Zuordnung lösen
-                    </Button>
-                    <Button variant="ghost" className="ml-1 px-2 py-1 text-xs text-ez-accent" onClick={() => loeschenMitConfirm(m.kunde)}>
-                      Löschen
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataTable
+            rows={mappings}
+            rowKey={(m) => m.id}
+            initialSort={{ key: 'kunde', dir: 'asc' }}
+            columns={[
+              { key: 'kunde', label: 'Kunde', value: (m) => m.kunde },
+              {
+                key: 'region', label: 'Region', filter: 'select', value: (m) => m.regionCode,
+                render: (m) => (
+                  <select className="rounded border border-gray-300 px-2 py-1 text-sm" value={m.regionCode} onChange={(e) => upsert.mutate({ kunde: m.kunde, regionCode: e.target.value })}>
+                    {regionen?.map((r) => <option key={r.code} value={r.code}>{r.code} · {r.bezeichnung}</option>)}
+                  </select>
+                ),
+              },
+              {
+                key: 'aktion', label: '', filter: 'none', sortable: false, align: 'right',
+                render: (m) => (
+                  <span className="whitespace-nowrap">
+                    <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => entfernen.mutate(m.kunde)}>Zuordnung lösen</Button>
+                    <Button variant="ghost" className="ml-1 px-2 py-1 text-xs text-ez-accent" onClick={() => loeschenMitConfirm(m.kunde)}>Löschen</Button>
+                  </span>
+                ),
+              },
+            ] satisfies Column<Mapping>[]}
+          />
         )}
       </Card>
     </div>

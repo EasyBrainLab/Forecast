@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { Button, Card, Input, Ampel } from '@/components/ui';
+import { DataTable, type Column } from '@/components/data-table';
 
 const TYP_LABEL: Record<string, string> = { OEFFENTLICH: 'Öffentlich', PRIVAT: 'Privat', UNBEKANNT: 'Unbekannt' };
 const STATUS_LABEL: Record<string, string> = { NEU: 'Neu', AKTIV: 'Aktiv', GEFAEHRDET: 'Gefährdet', VERLOREN: 'Verloren', ZURUECKGEWONNEN: 'Zurückgewonnen' };
@@ -204,69 +205,48 @@ export default function CustomerSitePage() {
 
       <Card>
         <h2 className="mb-2 font-semibold text-ez-primary">Standort-Stammdaten {sites ? `(${sites.length})` : ''}</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 text-left text-gray-500">
-                <th className="py-2">Name</th>
-                <th className="py-2">Ort</th>
-                <th className="py-2">Region</th>
-                <th className="py-2">Typ</th>
-                <th className="py-2">Status</th>
-                <th className="py-2">Quellen</th>
-                <th className="py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {(sites ?? []).map((s) => (
-                <tr key={s.id} className="border-b border-gray-100">
-                  <td className="py-2 pr-2 font-medium text-gray-800">{s.name}</td>
-                  <td className="py-2 pr-2 text-gray-600">{[s.stadt, s.landIso].filter(Boolean).join(', ') || '—'}</td>
-                  <td className="py-2 pr-2">
-                    <select className="rounded border border-gray-300 px-1 py-1 text-xs" value={s.regionCode ?? ''} onChange={(e) => patch(s, { regionCode: e.target.value || null })}>
-                      <option value="">—</option>
-                      {formRegionen.map((r) => (
-                        <option key={r.code} value={r.code}>
-                          {r.code}
-                        </option>
-                      ))}
+        {sites && (
+          <DataTable
+            rows={sites}
+            rowKey={(s) => s.id}
+            initialSort={{ key: 'name', dir: 'asc' }}
+            leerText="Noch keine Standorte erfasst."
+            columns={[
+              { key: 'name', label: 'Name', value: (s) => s.name, render: (s) => <span className="font-medium text-gray-800">{s.name}</span> },
+              { key: 'ort', label: 'Ort', value: (s) => [s.stadt, s.landIso].filter(Boolean).join(', '), render: (s) => <span className="text-gray-600">{[s.stadt, s.landIso].filter(Boolean).join(', ') || '—'}</span> },
+              {
+                key: 'region', label: 'Region', filter: 'select', value: (s) => s.regionCode ?? '',
+                render: (s) => (
+                  <select className="rounded border border-gray-300 px-1 py-1 text-xs" value={s.regionCode ?? ''} onChange={(e) => patch(s, { regionCode: e.target.value || null })}>
+                    <option value="">—</option>
+                    {formRegionen.map((r) => <option key={r.code} value={r.code}>{r.code}</option>)}
+                  </select>
+                ),
+              },
+              {
+                key: 'typ', label: 'Typ', filter: 'select', value: (s) => TYP_LABEL[s.typ] ?? s.typ,
+                render: (s) => (
+                  <select className="rounded border border-gray-300 px-1 py-1 text-xs" value={s.typ} onChange={(e) => patch(s, { typ: e.target.value })}>
+                    {Object.entries(TYP_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                ),
+              },
+              {
+                key: 'status', label: 'Status', filter: 'select', value: (s) => STATUS_LABEL[s.status] ?? s.status,
+                render: (s) => (
+                  <span className="inline-flex items-center gap-1">
+                    <Ampel farbe={STATUS_AMPEL[s.status] ?? 'grau'} />
+                    <select className="rounded border border-gray-300 px-1 py-1 text-xs" value={s.status} onChange={(e) => statusSetzen(s, e.target.value)}>
+                      {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
-                  </td>
-                  <td className="py-2 pr-2">
-                    <select className="rounded border border-gray-300 px-1 py-1 text-xs" value={s.typ} onChange={(e) => patch(s, { typ: e.target.value })}>
-                      {Object.entries(TYP_LABEL).map(([k, v]) => (
-                        <option key={k} value={k}>
-                          {v}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="py-2 pr-2">
-                    <span className="inline-flex items-center gap-1">
-                      <Ampel farbe={STATUS_AMPEL[s.status] ?? 'grau'} />
-                      <select className="rounded border border-gray-300 px-1 py-1 text-xs" value={s.status} onChange={(e) => statusSetzen(s, e.target.value)}>
-                        {Object.entries(STATUS_LABEL).map(([k, v]) => (
-                          <option key={k} value={k}>
-                            {v}
-                          </option>
-                        ))}
-                      </select>
-                    </span>
-                  </td>
-                  <td className="py-2 pr-2 text-xs text-gray-500" title={s.quellNamen.join('\n')}>
-                    {s.quellNamen.length}
-                  </td>
-                  <td className="py-2 text-right">
-                    <button className="text-xs text-ez-accent hover:underline" onClick={() => loeschen(s)}>
-                      Löschen
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {sites && sites.length === 0 && <p className="py-3 text-gray-500">Noch keine Standorte erfasst.</p>}
-        </div>
+                  </span>
+                ),
+              },
+              { key: 'quellen', label: 'Quellen', filter: 'none', align: 'right', value: (s) => s.quellNamen.length, render: (s) => <span className="text-xs text-gray-500" title={s.quellNamen.join('\n')}>{s.quellNamen.length}</span> },
+              { key: 'aktion', label: '', filter: 'none', sortable: false, align: 'right', render: (s) => <button className="text-xs text-ez-accent hover:underline" onClick={() => loeschen(s)}>Löschen</button> },
+            ] satisfies Column<Site>[]}
+          />
+        )}
       </Card>
     </div>
   );

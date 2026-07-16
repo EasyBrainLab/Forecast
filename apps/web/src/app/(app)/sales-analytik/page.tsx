@@ -3,6 +3,12 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { Button, Card } from '@/components/ui';
+import { DataTable, type Column } from '@/components/data-table';
+
+type Zeile = Record<string, unknown>;
+const s = (v: unknown): string => (v == null ? '' : String(v));
+const nz = (v: unknown): number => (typeof v === 'number' ? v : 0);
+const zeit = (v: unknown): number => (v ? new Date(v as string).getTime() : 0);
 
 type Typ = 'preisstabilitaet' | 'umsatzveraenderung' | 'kundenzeitreihe' | 'mengentrend';
 
@@ -103,35 +109,36 @@ export default function SalesAnalytikPage() {
   };
 
   const zeilen = result?.zeilen ?? [];
-  const kopf = useMemo<{ label: string; render: (z: Record<string, unknown>) => string; right?: boolean }[]>(() => {
+  const spalten = useMemo<Column<Zeile>[]>(() => {
+    const R = (align: 'right') => ({ align, filter: 'none' as const });
     if (typ === 'preisstabilitaet') return [
-      { label: 'Kunde', render: (z) => (z.kundenname as string) ?? (z.kundennummer as string) },
-      { label: 'Produkt', render: (z) => (z.produktname as string) ?? (z.produktnummer as string) },
-      { label: 'Preis', render: (z) => num(z.preis as number, 2), right: true },
-      { label: 'Jahre', render: (z) => num(z.jahreSpanne as number, 1), right: true },
-      { label: 'Rechnungen', render: (z) => num(z.anzahlRechnungen as number), right: true },
-      { label: 'von', render: (z) => dat(z.ersteRechnung as string) },
-      { label: 'bis', render: (z) => dat(z.letzteRechnung as string) },
+      { key: 'kunde', label: 'Kunde', value: (z) => s(z.kundenname ?? z.kundennummer), render: (z) => s(z.kundenname ?? z.kundennummer) },
+      { key: 'produkt', label: 'Produkt', value: (z) => s(z.produktname ?? z.produktnummer), render: (z) => s(z.produktname ?? z.produktnummer) },
+      { key: 'preis', label: 'Preis', ...R('right'), value: (z) => nz(z.preis), render: (z) => num(z.preis as number, 2) },
+      { key: 'jahre', label: 'Jahre', ...R('right'), value: (z) => nz(z.jahreSpanne), render: (z) => num(z.jahreSpanne as number, 1) },
+      { key: 'anzahl', label: 'Rechnungen', ...R('right'), value: (z) => nz(z.anzahlRechnungen), render: (z) => num(z.anzahlRechnungen as number) },
+      { key: 'von', label: 'von', ...R('right'), value: (z) => zeit(z.ersteRechnung), render: (z) => dat(z.ersteRechnung as string) },
+      { key: 'bis', label: 'bis', ...R('right'), value: (z) => zeit(z.letzteRechnung), render: (z) => dat(z.letzteRechnung as string) },
     ];
     if (typ === 'umsatzveraenderung') return [
-      { label: 'Kunde', render: (z) => (z.kundenname as string) ?? (z.kundennummer as string) },
-      { label: `Umsatz ${jahrVon} (kEUR)`, render: (z) => keur(z.umsatzVon as number), right: true },
-      { label: `Umsatz ${jahrBis} (kEUR)`, render: (z) => keur(z.umsatzBis as number), right: true },
-      { label: 'Δ (kEUR)', render: (z) => keur(z.deltaEur as number), right: true },
-      { label: 'Δ %', render: (z) => pct(z.deltaProzent as number | null), right: true },
+      { key: 'kunde', label: 'Kunde', value: (z) => s(z.kundenname ?? z.kundennummer), render: (z) => s(z.kundenname ?? z.kundennummer) },
+      { key: 'von', label: `Umsatz ${jahrVon} (kEUR)`, ...R('right'), value: (z) => nz(z.umsatzVon), render: (z) => keur(z.umsatzVon as number) },
+      { key: 'bis', label: `Umsatz ${jahrBis} (kEUR)`, ...R('right'), value: (z) => nz(z.umsatzBis), render: (z) => keur(z.umsatzBis as number) },
+      { key: 'delta', label: 'Δ (kEUR)', ...R('right'), value: (z) => nz(z.deltaEur), render: (z) => keur(z.deltaEur as number) },
+      { key: 'deltaP', label: 'Δ %', ...R('right'), value: (z) => nz(z.deltaProzent), render: (z) => pct(z.deltaProzent as number | null) },
     ];
     if (typ === 'mengentrend') return [
-      { label: dimension === 'produkt' ? 'Produkt' : 'Kunde', render: (z) => (z.label as string) ?? (z.schluessel as string) },
-      { label: `Menge ${jahrVon}`, render: (z) => num(z.mengeVon as number), right: true },
-      { label: `Menge ${jahrBis}`, render: (z) => num(z.mengeBis as number), right: true },
-      { label: 'Δ Menge', render: (z) => num(z.deltaMenge as number), right: true },
-      { label: 'Δ %', render: (z) => pct(z.deltaProzent as number | null), right: true },
+      { key: 'label', label: dimension === 'produkt' ? 'Produkt' : 'Kunde', value: (z) => s(z.label ?? z.schluessel), render: (z) => s(z.label ?? z.schluessel) },
+      { key: 'von', label: `Menge ${jahrVon}`, ...R('right'), value: (z) => nz(z.mengeVon), render: (z) => num(z.mengeVon as number) },
+      { key: 'bis', label: `Menge ${jahrBis}`, ...R('right'), value: (z) => nz(z.mengeBis), render: (z) => num(z.mengeBis as number) },
+      { key: 'delta', label: 'Δ Menge', ...R('right'), value: (z) => nz(z.deltaMenge), render: (z) => num(z.deltaMenge as number) },
+      { key: 'deltaP', label: 'Δ %', ...R('right'), value: (z) => nz(z.deltaProzent), render: (z) => pct(z.deltaProzent as number | null) },
     ];
     return [
-      { label: 'Jahr', render: (z) => String(z.jahr) },
-      { label: 'Umsatz (kEUR)', render: (z) => keur(z.umsatz as number), right: true },
-      { label: 'Menge', render: (z) => num(z.menge as number), right: true },
-      { label: 'Ø-Preis', render: (z) => num(z.durchschnittspreis as number | null, 2), right: true },
+      { key: 'jahr', label: 'Jahr', ...R('right'), value: (z) => nz(z.jahr), render: (z) => String(z.jahr) },
+      { key: 'umsatz', label: 'Umsatz (kEUR)', ...R('right'), value: (z) => nz(z.umsatz), render: (z) => keur(z.umsatz as number) },
+      { key: 'menge', label: 'Menge', ...R('right'), value: (z) => nz(z.menge), render: (z) => num(z.menge as number) },
+      { key: 'preis', label: 'Ø-Preis', ...R('right'), value: (z) => nz(z.durchschnittspreis), render: (z) => num(z.durchschnittspreis as number | null, 2) },
     ];
   }, [typ, jahrVon, jahrBis, dimension]);
 
@@ -231,24 +238,7 @@ export default function SalesAnalytikPage() {
 
       {result && (
         <Card>
-          <div className="mb-2 text-xs text-gray-500">{zeilen.length} Zeile(n)</div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 text-left text-gray-500">
-                  {kopf.map((c) => <th key={c.label} className={`py-2 pr-3 ${c.right ? 'text-right' : ''}`}>{c.label}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {zeilen.map((z, i) => (
-                  <tr key={i} className="border-b border-gray-100">
-                    {kopf.map((c) => <td key={c.label} className={`py-1.5 pr-3 ${c.right ? 'text-right tabular-nums' : ''}`}>{c.render(z)}</td>)}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {zeilen.length === 0 && <p className="py-3 text-gray-500">Keine Treffer für diese Parameter.</p>}
-          </div>
+          <DataTable rows={zeilen} rowKey={(_z, i) => String(i)} columns={spalten} leerText="Keine Treffer für diese Parameter." />
         </Card>
       )}
     </div>
