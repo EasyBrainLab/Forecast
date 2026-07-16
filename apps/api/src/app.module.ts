@@ -16,6 +16,7 @@ import { SalesImportModule } from './sales-import/sales-import.module';
 import { KundenabgleichModule } from './kundenabgleich/kundenabgleich.module';
 import { SalesAnalytikModule } from './sales-analytik/sales-analytik.module';
 import { SalesKiModule } from './sales-ki/sales-ki.module';
+import { ImportUebersichtModule } from './import-uebersicht/import-uebersicht.module';
 import { BudgetModule } from './budget/budget.module';
 import { ForecastModule } from './forecast/forecast.module';
 import { DashboardModule } from './dashboard/dashboard.module';
@@ -53,6 +54,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
     KundenabgleichModule,
     SalesAnalytikModule,
     SalesKiModule,
+    ImportUebersichtModule,
     BudgetModule,
     ForecastModule,
     DashboardModule,

@@ -25,10 +25,34 @@ interface Bericht {
   typ?: string;
   detail?: Record<string, unknown>;
 }
-interface Uebersicht {
-  ist: { zeilen: number; summeEur: number; jahre: { jahr: number; zeilen: number }[]; letzterImport: { dateiname: string; status: string; zeilenNeu: number; erstelltAm: string } | null };
-  budget: { zeilen: number; letzterImport: { dateiname: string; status: string; erstelltAm: string } | null };
+interface LetzterImport {
+  typ: string;
+  dateiname: string;
+  status: string;
+  erstelltAm: string;
+  abgeschlossenAm: string | null;
+  zeilenGesamt: number;
+  zeilenNeu: number;
+  zeilenAktualisiert: number;
+  zeilenUebersprungen: number;
+  zeilenQuarantaene: number;
+  bericht: Bericht | null;
 }
+
+const TYP_LABEL: Record<string, string> = {
+  IST: 'Ist-Umsätze',
+  BUDGET: 'Budget',
+  ABSATZ: 'Absatz / Stückzahlen',
+  KUNDENSTAMM: 'Kundenstamm (D365)',
+  RECHNUNG: 'Rechnungsköpfe (D365)',
+  RECHNUNGSPOSITION: 'Rechnungspositionen (D365)',
+};
+const STATUS_BADGE: Record<string, string> = {
+  ABGESCHLOSSEN: 'bg-ez-ampelGruen/20 text-ez-ampelGruen',
+  HOCHGELADEN: 'bg-ez-ampelGelb/20 text-yellow-700',
+  VALIDIERT: 'bg-ez-ampelGelb/20 text-yellow-700',
+  FEHLGESCHLAGEN: 'bg-ez-accent/15 text-ez-accent',
+};
 
 function upload(pfad: string, file: File, onProgress: (p: number) => void): Promise<{ bericht: Bericht }> {
   return new Promise((resolve, reject) => {
@@ -76,7 +100,7 @@ function ImportKachel({ titel, beschreibung, endpoint, accept }: { titel: string
       });
       setBericht(res.bericht);
       setPhase('fertig');
-      qc.invalidateQueries({ queryKey: ['uebersicht'] });
+      qc.invalidateQueries({ queryKey: ['datenstand'] });
     } catch (e) {
       setFehler((e as Error).message);
       setPhase('fehler');
@@ -208,35 +232,73 @@ function ImportKachel({ titel, beschreibung, endpoint, accept }: { titel: string
   );
 }
 
+function DatenstandZeile({ imp }: { imp: LetzterImport }) {
+  const [offen, setOffen] = useState(false);
+  return (
+    <>
+      <tr className="border-b border-gray-100">
+        <td className="py-2 pr-3 font-medium text-gray-800">{TYP_LABEL[imp.typ] ?? imp.typ}</td>
+        <td className="py-2 pr-3 text-gray-700" title={imp.dateiname}>{imp.dateiname}</td>
+        <td className="py-2 pr-3 whitespace-nowrap text-gray-600">{new Date(imp.erstelltAm).toLocaleString('de-DE')}</td>
+        <td className="py-2 pr-3"><span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[imp.status] ?? 'bg-gray-100'}`}>{imp.status}</span></td>
+        <td className="py-2 pr-3 text-right tabular-nums text-gray-600">{imp.zeilenGesamt.toLocaleString('de-DE')}</td>
+        <td className="py-2 pr-3 text-right tabular-nums">{imp.zeilenQuarantaene > 0 ? <span className="text-ez-accent">{imp.zeilenQuarantaene.toLocaleString('de-DE')}</span> : '—'}</td>
+        <td className="py-2 text-right">
+          {imp.bericht && <button className="text-xs text-ez-primary hover:underline" onClick={() => setOffen((o) => !o)}>{offen ? 'schließen' : 'Bericht'}</button>}
+        </td>
+      </tr>
+      {offen && imp.bericht && (
+        <tr>
+          <td colSpan={7} className="bg-gray-50 px-3 py-2">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600 sm:grid-cols-4">
+              <span>Neu: <strong>{eur(imp.zeilenNeu)}</strong></span>
+              <span>Aktualisiert: <strong>{eur(imp.zeilenAktualisiert)}</strong></span>
+              <span>Übersprungen: <strong>{eur(imp.zeilenUebersprungen)}</strong></span>
+              <span>Quarantäne: <strong>{eur(imp.zeilenQuarantaene)}</strong></span>
+            </div>
+            {imp.bericht.detail && (
+              <div className="mt-1 text-xs text-gray-500">{Object.entries(imp.bericht.detail).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ')}</div>
+            )}
+            {imp.bericht.summeGesamtEur !== undefined && <div className="mt-1 text-xs text-gray-500">Σ Umsatz: {eur(imp.bericht.summeGesamtEur)} €</div>}
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 export default function ImportPage() {
-  const { data } = useQuery({ queryKey: ['uebersicht'], queryFn: () => api.get<Uebersicht>('/dashboard/uebersicht') });
+  const { data: datenstand } = useQuery({ queryKey: ['datenstand'], queryFn: () => api.get<LetzterImport[]>('/import-uebersicht') });
 
   return (
     <div className="space-y-5">
       <h1 className="text-2xl font-bold text-ez-primary">Datenimport</h1>
 
       <Card>
-        <h2 className="mb-2 text-sm font-semibold text-ez-primary">Aktuell im System</h2>
-        {!data ? (
+        <h2 className="mb-1 text-sm font-semibold text-ez-primary">Aktueller Datenstand</h2>
+        <p className="mb-3 text-xs text-gray-500">Je Import-Art der zuletzt hochgeladene Datenstand — so ist jederzeit nachvollziehbar, mit welcher Datei das Tool gerade arbeitet.</p>
+        {!datenstand ? (
           <p className="text-sm text-gray-500">Lädt…</p>
+        ) : datenstand.length === 0 ? (
+          <p className="text-sm text-gray-500">Noch keine Importe vorhanden.</p>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded bg-gray-50 p-3 text-sm">
-              <div className="font-medium">Ist-Umsätze</div>
-              <div className="text-gray-600">
-                {data.ist.zeilen.toLocaleString('de-DE')} Zeilen · Σ {eur(data.ist.summeEur)} € · Jahre {data.ist.jahre.map((j) => j.jahr).join(', ') || '—'}
-              </div>
-              <div className="text-xs text-gray-400">
-                {data.ist.letzterImport ? `Letzter Import: ${data.ist.letzterImport.dateiname} (${new Date(data.ist.letzterImport.erstelltAm).toLocaleString('de-DE')})` : 'Noch kein Import'}
-              </div>
-            </div>
-            <div className="rounded bg-gray-50 p-3 text-sm">
-              <div className="font-medium">Budget</div>
-              <div className="text-gray-600">{data.budget.zeilen.toLocaleString('de-DE')} aktive Zeilen</div>
-              <div className="text-xs text-gray-400">
-                {data.budget.letzterImport ? `Letzter Import: ${data.budget.letzterImport.dateiname} (${new Date(data.budget.letzterImport.erstelltAm).toLocaleString('de-DE')})` : 'Noch kein Import'}
-              </div>
-            </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 text-left text-gray-500">
+                  <th className="py-2 pr-3">Art</th>
+                  <th className="py-2 pr-3">Datei</th>
+                  <th className="py-2 pr-3">Stand</th>
+                  <th className="py-2 pr-3">Status</th>
+                  <th className="py-2 pr-3 text-right">Zeilen</th>
+                  <th className="py-2 pr-3 text-right">Quarantäne</th>
+                  <th className="py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {datenstand.map((imp) => <DatenstandZeile key={imp.typ} imp={imp} />)}
+              </tbody>
+            </table>
           </div>
         )}
       </Card>

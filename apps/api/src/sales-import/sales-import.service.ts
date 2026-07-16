@@ -45,6 +45,7 @@ export class SalesImportService {
       data: {
         status: 'ABGESCHLOSSEN',
         abgeschlossenAm: new Date(),
+        zeilenGesamt: bericht.zeilenGesamt,
         zeilenNeu: bericht.zeilenNeu,
         zeilenAktualisiert: bericht.zeilenAktualisiert,
         zeilenUebersprungen: bericht.zeilenUebersprungen,
