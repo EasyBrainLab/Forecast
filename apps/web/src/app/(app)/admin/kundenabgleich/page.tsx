@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { Button, Card } from '@/components/ui';
+import { DataTable, type Column } from '@/components/data-table';
 
 interface Match {
   id: string;
@@ -118,6 +119,15 @@ export default function KundenabgleichPage() {
 
   const datum = (s: string | null) => (s ? new Date(s).toLocaleDateString('de-DE') : '—');
 
+  type OhneStammRow = OhneStamm['kunden'][number];
+  const ohneStammColumns: Column<OhneStammRow>[] = [
+    { key: 'dataAreaId', label: 'Gesellschaft', value: (k) => k.dataAreaId, filter: 'select' },
+    { key: 'kundennummer', label: 'Kundennummer', value: (k) => k.kundennummer, render: (k) => <span className="font-medium text-gray-800">{k.kundennummer}</span> },
+    { key: 'anzahlRechnungen', label: 'Rechnungen', value: (k) => k.anzahlRechnungen, align: 'right', filter: 'none' },
+    { key: 'datumVon', label: 'von', value: (k) => (k.datumVon ? new Date(k.datumVon).getTime() : 0), render: (k) => datum(k.datumVon), filter: 'none' },
+    { key: 'datumBis', label: 'bis', value: (k) => (k.datumBis ? new Date(k.datumBis).getTime() : 0), render: (k) => datum(k.datumBis), filter: 'none' },
+  ];
+
   return (
     <div className="space-y-5">
       <div>
@@ -162,31 +172,15 @@ export default function KundenabgleichPage() {
           <span className="text-xs text-gray-500">{ohneStamm ? `${ohneStamm.gesamt}` : ''}</span>
         </div>
         <p className="mb-2 text-xs text-gray-500">Kunden, die in Rechnungen vorkommen, aber nicht im D365-Kundenstamm stehen — überwiegend Intercompany- und Altkonten. Nur zur Sichtung (Rechnungen tragen keinen Kundennamen).</p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 text-left text-gray-500">
-                <th className="py-2 pr-2">Gesellschaft</th>
-                <th className="py-2 pr-2">Kundennummer</th>
-                <th className="py-2 pr-2 text-right">Rechnungen</th>
-                <th className="py-2 pr-2">von</th>
-                <th className="py-2">bis</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(ohneStamm?.kunden ?? []).map((k) => (
-                <tr key={`${k.dataAreaId}|${k.kundennummer}`} className="border-b border-gray-100">
-                  <td className="py-1.5 pr-2 text-gray-600">{k.dataAreaId}</td>
-                  <td className="py-1.5 pr-2 font-medium text-gray-800">{k.kundennummer}</td>
-                  <td className="py-1.5 pr-2 text-right tabular-nums">{k.anzahlRechnungen}</td>
-                  <td className="py-1.5 pr-2 text-gray-600">{datum(k.datumVon)}</td>
-                  <td className="py-1.5 text-gray-600">{datum(k.datumBis)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {ohneStamm && ohneStamm.kunden.length === 0 && <p className="py-3 text-gray-500">Alle Rechnungskunden sind im Stamm vorhanden.</p>}
-        </div>
+        {ohneStamm && (
+          <DataTable
+            rows={ohneStamm.kunden}
+            rowKey={(k) => `${k.dataAreaId}|${k.kundennummer}`}
+            initialSort={{ key: 'anzahlRechnungen', dir: 'desc' }}
+            leerText="Alle Rechnungskunden sind im Stamm vorhanden."
+            columns={ohneStammColumns}
+          />
+        )}
       </Card>
     </div>
   );

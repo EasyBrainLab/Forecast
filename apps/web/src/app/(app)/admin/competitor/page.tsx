@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Button, Card, Input } from '@/components/ui';
+import { DataTable } from '@/components/data-table';
 
 interface Competitor {
   id: string;
@@ -83,55 +84,34 @@ export default function CompetitorAdminPage() {
       {isLoading && <p className="text-gray-500">Lädt…</p>}
       {data && (
         <Card>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 text-left text-gray-500">
-                <th className="py-2">Name</th>
-                <th className="py-2">Notiz</th>
-                <th className="py-2 text-center">Aktiv</th>
-                {darfBearbeiten && <th className="py-2" />}
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((c) => (
-                <tr key={c.id} className={`border-b border-gray-100 ${c.aktiv ? '' : 'opacity-50'}`}>
-                  <td className="py-2 pr-2">
-                    {darfBearbeiten ? (
-                      <input
-                        className="w-full rounded border border-transparent px-1 py-1 hover:border-gray-300 focus:border-ez-primary focus:outline-none"
-                        defaultValue={c.name}
-                        onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== c.name && speichern(c, { name: e.target.value.trim() })}
-                      />
-                    ) : (
-                      c.name
-                    )}
-                  </td>
-                  <td className="py-2 pr-2 text-gray-600">
-                    {darfBearbeiten ? (
-                      <input
-                        className="w-full rounded border border-transparent px-1 py-1 hover:border-gray-300 focus:border-ez-primary focus:outline-none"
-                        defaultValue={c.notiz ?? ''}
-                        onBlur={(e) => e.target.value !== (c.notiz ?? '') && speichern(c, { notiz: e.target.value })}
-                      />
-                    ) : (
-                      (c.notiz ?? '—')
-                    )}
-                  </td>
-                  <td className="py-2 text-center">
-                    <input type="checkbox" checked={c.aktiv} disabled={!darfBearbeiten} onChange={() => speichern(c, { aktiv: !c.aktiv })} />
-                  </td>
-                  {darfBearbeiten && (
-                    <td className="py-2 text-right">
-                      <button className="text-xs text-ez-accent hover:underline" onClick={() => loeschen(c)}>
-                        Löschen
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {data.length === 0 && <p className="py-3 text-gray-500">Noch keine Wettbewerber erfasst.</p>}
+          <DataTable
+            rows={data}
+            rowKey={(c) => c.id}
+            initialSort={{ key: 'name', dir: 'asc' }}
+            leerText="Noch keine Wettbewerber erfasst."
+            columns={[
+              {
+                key: 'name', label: 'Name', value: (c) => c.name,
+                render: (c) => darfBearbeiten
+                  ? <input className="w-full rounded border border-transparent px-1 py-1 hover:border-gray-300 focus:border-ez-primary focus:outline-none" defaultValue={c.name} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== c.name && speichern(c, { name: e.target.value.trim() })} />
+                  : <span className={c.aktiv ? '' : 'opacity-50'}>{c.name}</span>,
+              },
+              {
+                key: 'notiz', label: 'Notiz', value: (c) => c.notiz ?? '',
+                render: (c) => darfBearbeiten
+                  ? <input className="w-full rounded border border-transparent px-1 py-1 text-gray-600 hover:border-gray-300 focus:border-ez-primary focus:outline-none" defaultValue={c.notiz ?? ''} onBlur={(e) => e.target.value !== (c.notiz ?? '') && speichern(c, { notiz: e.target.value })} />
+                  : <span className="text-gray-600">{c.notiz ?? '—'}</span>,
+              },
+              {
+                key: 'aktiv', label: 'Aktiv', value: (c) => (c.aktiv ? 'ja' : 'nein'), filter: 'select', align: 'right',
+                render: (c) => <input type="checkbox" checked={c.aktiv} disabled={!darfBearbeiten} onChange={() => speichern(c, { aktiv: !c.aktiv })} />,
+              },
+              ...(darfBearbeiten ? [{
+                key: 'aktion', label: '', filter: 'none' as const, sortable: false, align: 'right' as const,
+                render: (c: Competitor) => <button className="text-xs text-ez-accent hover:underline" onClick={() => loeschen(c)}>Löschen</button>,
+              }] : []),
+            ]}
+          />
         </Card>
       )}
     </div>

@@ -53,7 +53,9 @@ jobs:
             ghcr.io/${{ steps.repo.outputs.name }}/forecast-web:${{ github.sha }}
             ghcr.io/${{ steps.repo.outputs.name }}/forecast-web:latest
           build-args: |
-            NEXT_PUBLIC_API_URL=https://forecast.easybrainlab.com/api
+            # Relativ (same-origin): Web und API laufen auf derselben Domain -> das Web-Image
+            # bleibt domain-neutral. Ein Domainwechsel braucht dann nur die DOMAIN-Variable, keinen Rebuild.
+            NEXT_PUBLIC_API_URL=/api
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

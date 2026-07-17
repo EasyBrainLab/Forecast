@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Button, Card, Input } from '@/components/ui';
+import { DataTable, type Column } from '@/components/data-table';
 import { ROLLEN_LABEL, type Rolle } from '@/lib/auth';
 
 interface User {
@@ -141,111 +142,77 @@ export default function UsersPage() {
 
       {fehler && <p className="rounded bg-ez-accent/10 p-2 text-sm text-ez-accent">{fehler}</p>}
 
-      <Card className="overflow-x-auto p-0">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left text-gray-600">
-            <tr>
-              <th className="p-3">Name</th>
-              <th className="p-3">E-Mail</th>
-              <th className="p-3">Rolle / Region</th>
-              <th className="p-3">Status</th>
-              <th className="p-3 text-right">Aktionen</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users?.map((u) => {
-              const bearbeitet = editId === u.id;
-              const selbst = u.id === aktor?.id;
-              const aktiv = u.status !== 'DEAKTIVIERT';
-              return (
-                <tr key={u.id} className="border-t align-top">
-                  <td className="p-3">{u.name}</td>
-                  <td className="p-3 text-gray-500">{u.email}</td>
-                  <td className="p-3">
-                    {bearbeitet ? (
-                      <div className="space-y-2">
-                        <select className="rounded border border-gray-300 px-2 py-1 text-sm" value={draft.rolle} onChange={(e) => setDraft((d) => ({ ...d, rolle: e.target.value as Rolle }))}>
-                          {ROLLEN.map((r) => (
-                            <option key={r} value={r}>
-                              {ROLLEN_LABEL[r]}
-                            </option>
-                          ))}
-                        </select>
-                        {draft.rolle === 'AGM' && (
-                          <div className="flex flex-wrap gap-2 rounded border border-gray-200 bg-gray-50 p-2">
-                            {forecastRegionen.map((r) => (
-                              <label key={r.code} className="flex items-center gap-1 text-xs">
-                                <input type="checkbox" checked={draft.regionCodes.includes(r.code)} onChange={() => setDraft((d) => ({ ...d, regionCodes: toggle(d.regionCodes, r.code) }))} />
-                                {r.code}
-                              </label>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div>
-                        <span>{ROLLEN_LABEL[u.rolle]}</span>
-                        {u.rolle === 'AGM' && <span className="ml-1 text-xs text-gray-400">({u.regionCodes.join(', ') || 'keine Region'})</span>}
+      {users && (
+        <Card>
+          <DataTable
+            rows={users}
+            rowKey={(u) => u.id}
+            initialSort={{ key: 'name', dir: 'asc' }}
+            leerText="Noch keine Nutzer."
+            columns={[
+              { key: 'name', label: 'Name', value: (u) => u.name },
+              { key: 'email', label: 'E-Mail', value: (u) => u.email, render: (u) => <span className="text-gray-500">{u.email}</span> },
+              {
+                key: 'rolle', label: 'Rolle / Region', filter: 'select', value: (u) => ROLLEN_LABEL[u.rolle],
+                render: (u) => editId === u.id ? (
+                  <div className="space-y-2">
+                    <select className="rounded border border-gray-300 px-2 py-1 text-sm" value={draft.rolle} onChange={(e) => setDraft((d) => ({ ...d, rolle: e.target.value as Rolle }))}>
+                      {ROLLEN.map((r) => <option key={r} value={r}>{ROLLEN_LABEL[r]}</option>)}
+                    </select>
+                    {draft.rolle === 'AGM' && (
+                      <div className="flex flex-wrap gap-2 rounded border border-gray-200 bg-gray-50 p-2">
+                        {forecastRegionen.map((r) => (
+                          <label key={r.code} className="flex items-center gap-1 text-xs">
+                            <input type="checkbox" checked={draft.regionCodes.includes(r.code)} onChange={() => setDraft((d) => ({ ...d, regionCodes: toggle(d.regionCodes, r.code) }))} />
+                            {r.code}
+                          </label>
+                        ))}
                       </div>
                     )}
-                  </td>
-                  <td className="p-3">
-                    <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[u.status] ?? 'bg-gray-100'}`}>{u.status}</span>
-                  </td>
-                  <td className="p-3">
+                  </div>
+                ) : (
+                  <div>
+                    <span>{ROLLEN_LABEL[u.rolle]}</span>
+                    {u.rolle === 'AGM' && <span className="ml-1 text-xs text-gray-400">({u.regionCodes.join(', ') || 'keine Region'})</span>}
+                  </div>
+                ),
+              },
+              {
+                key: 'status', label: 'Status', filter: 'select', value: (u) => u.status,
+                render: (u) => <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[u.status] ?? 'bg-gray-100'}`}>{u.status}</span>,
+              },
+              {
+                key: 'aktion', label: 'Aktionen', filter: 'none', sortable: false, align: 'right',
+                render: (u) => {
+                  const selbst = u.id === aktor?.id;
+                  const aktiv = u.status !== 'DEAKTIVIERT';
+                  return (
                     <div className="flex flex-wrap justify-end gap-2">
-                      {bearbeitet ? (
+                      {editId === u.id ? (
                         <>
-                          <Button
-                            className="px-2 py-1 text-xs"
-                            disabled={speichern.isPending || (draft.rolle === 'AGM' && draft.regionCodes.length === 0)}
-                            onClick={() => speichern.mutate(u)}
-                          >
-                            Speichern
-                          </Button>
-                          <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => setEditId(null)}>
-                            Abbrechen
-                          </Button>
+                          <Button className="px-2 py-1 text-xs" disabled={speichern.isPending || (draft.rolle === 'AGM' && draft.regionCodes.length === 0)} onClick={() => speichern.mutate(u)}>Speichern</Button>
+                          <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => setEditId(null)}>Abbrechen</Button>
                         </>
                       ) : (
                         <>
-                          <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => starteEdit(u)}>
-                            Rolle/Region
-                          </Button>
-                          {u.status === 'EINGELADEN' && (
-                            <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => aktion.mutate({ id: u.id, was: 'reinvite' })}>
-                              Erneut einladen
-                            </Button>
-                          )}
+                          <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => starteEdit(u)}>Rolle/Region</Button>
+                          {u.status === 'EINGELADEN' && <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => aktion.mutate({ id: u.id, was: 'reinvite' })}>Erneut einladen</Button>}
                           {aktiv ? (
-                            <Button variant="ghost" className="px-2 py-1 text-xs" disabled={selbst} onClick={() => aktion.mutate({ id: u.id, was: 'deaktivieren' })}>
-                              Deaktivieren
-                            </Button>
+                            <Button variant="ghost" className="px-2 py-1 text-xs" disabled={selbst} onClick={() => aktion.mutate({ id: u.id, was: 'deaktivieren' })}>Deaktivieren</Button>
                           ) : (
-                            <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => aktion.mutate({ id: u.id, was: 'reaktivieren' })}>
-                              Reaktivieren
-                            </Button>
+                            <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => aktion.mutate({ id: u.id, was: 'reaktivieren' })}>Reaktivieren</Button>
                           )}
-                          <Button
-                            variant="danger"
-                            className="px-2 py-1 text-xs"
-                            disabled={selbst}
-                            onClick={() => {
-                              if (window.confirm(`Nutzer „${u.name}" wirklich löschen? Nur möglich, wenn keine Historie existiert — sonst bitte deaktivieren.`)) loeschen.mutate(u.id);
-                            }}
-                          >
-                            Löschen
-                          </Button>
+                          <Button variant="danger" className="px-2 py-1 text-xs" disabled={selbst} onClick={() => { if (window.confirm(`Nutzer „${u.name}" wirklich löschen? Nur möglich, wenn keine Historie existiert — sonst bitte deaktivieren.`)) loeschen.mutate(u.id); }}>Löschen</Button>
                         </>
                       )}
                     </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </Card>
+                  );
+                },
+              },
+            ] satisfies Column<User>[]}
+          />
+        </Card>
+      )}
     </div>
   );
 }
