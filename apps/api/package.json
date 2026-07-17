@@ -26,6 +26,7 @@
     "verify:sales-analytik": "ts-node --transpile-only scripts/verify-sales-analytik.ts",
     "verify:sales-ki": "ts-node --transpile-only scripts/verify-sales-ki.ts",
     "verify:dashboard": "ts-node --transpile-only scripts/verify-dashboard.ts",
+    "verify:konsolidierung-monatlich": "ts-node --transpile-only scripts/verify-konsolidierung-monatlich.ts",
     "verify:export": "ts-node --transpile-only scripts/verify-export.ts",
     "verify:absatz": "ts-node --transpile-only scripts/verify-absatz.ts",
     "verify:erweiterungen": "ts-node --transpile-only scripts/verify-erweiterungen.ts",

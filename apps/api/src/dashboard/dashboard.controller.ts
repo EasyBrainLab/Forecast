@@ -26,6 +26,12 @@ export class DashboardController {
     return this.service.konsolidierung(Number(jahr) || new Date().getUTCFullYear(), aktor, bereinigt === 'true');
   }
 
+  @Roles('VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN')
+  @Get('konsolidierung-monatlich')
+  konsolidierungMonatlich(@Query('jahr') jahr: string, @CurrentUser() aktor: RequestUser) {
+    return this.service.konsolidierungMonatlich(Number(jahr) || new Date().getUTCFullYear(), aktor);
+  }
+
   private j(q?: string): number {
     return Number(q) || new Date().getUTCFullYear();
   }

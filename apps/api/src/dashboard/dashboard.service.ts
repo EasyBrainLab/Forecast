@@ -144,6 +144,99 @@ export class DashboardService {
     };
   }
 
+  /**
+   * Konsolidierte Monatssicht je Produktgruppe (E1) über alle Regionen im Scope, im Format der
+   * Forecast-Monatsansicht: Ist je Monat (< istGrenze), Forecast je Monat (>= istGrenze) und Budget
+   * je Monat. Werte in vollem EUR (Anzeige rechnet in kEUR). Forecast wird — wie in der bestehenden
+   * Konsolidierung — aus der jüngsten Periode/Version je Zelle (Land×E1) summiert (kein Budget-
+   * Fallback), sodass die Summen zur Region-Konsolidierung passen.
+   */
+  async konsolidierungMonatlich(jahr: number, aktor: RequestUser) {
+    const scope = await this.scope.getScope(aktor);
+    const { aktJahr, aktMonat, istGrenze } = this.stichtag(jahr);
+    const monate = Array.from({ length: 12 }, (_, i) => formatPeriode(jahr, i + 1));
+
+    const e1s = await this.prisma.produktgruppeE1.findMany({
+      orderBy: { sortierung: 'asc' },
+      select: { id: true, nameDe: true },
+    });
+
+    const istWhere: Prisma.IstUmsatzWhereInput = { jahr, monat: { lt: istGrenze } };
+    if (!scope.unbeschraenkt) {
+      istWhere.kostenstelleId = { in: scope.kostenstelleIds.length ? scope.kostenstelleIds : ['__none__'] };
+    }
+    const budWhere: Prisma.BudgetWhereInput = { jahr, status: 'AKTIV', monat: { not: null } };
+    if (!scope.unbeschraenkt) {
+      budWhere.regionCode = { in: scope.regionCodes.length ? scope.regionCodes : ['__none__'] };
+    }
+    const fcWhere: Prisma.ForecastVersionWhereInput = { jahr };
+    if (!scope.unbeschraenkt) {
+      fcWhere.regionCode = { in: scope.regionCodes.length ? scope.regionCodes : ['__none__'] };
+    }
+
+    const [istGrp, budGrp, versionen] = await Promise.all([
+      this.prisma.istUmsatz.groupBy({ by: ['e1Id', 'monat'], where: istWhere, _sum: { wertEur: true } }),
+      this.prisma.budget.groupBy({ by: ['e1Id', 'monat'], where: budWhere, _sum: { wertEur: true } }),
+      this.prisma.forecastVersion.findMany({ where: fcWhere, orderBy: { version: 'desc' } }),
+    ]);
+
+    // Ist/Budget je E1 je Monat.
+    const istMap = new Map<string, Record<string, number>>();
+    for (const g of istGrp) {
+      const rec = istMap.get(g.e1Id) ?? {};
+      rec[formatPeriode(jahr, g.monat)] = Number(g._sum.wertEur ?? 0);
+      istMap.set(g.e1Id, rec);
+    }
+    const budMap = new Map<string, Record<string, number>>();
+    for (const g of budGrp) {
+      if (g.monat == null) continue;
+      const rec = budMap.get(g.e1Id) ?? {};
+      rec[formatPeriode(jahr, g.monat)] = Number(g._sum.wertEur ?? 0);
+      budMap.set(g.e1Id, rec);
+    }
+
+    // Forecast je E1 je Monat: pro Region jüngste Periode, darin jüngste Version je Zelle, nur Monate >= istGrenze.
+    const byRegion = new Map<string, typeof versionen>();
+    for (const v of versionen) {
+      const arr = byRegion.get(v.regionCode) ?? [];
+      arr.push(v);
+      byRegion.set(v.regionCode, arr);
+    }
+    const fcMap = new Map<string, Record<string, number>>();
+    for (const [, vs] of byRegion) {
+      const maxPeriode = vs.reduce((m, v) => (v.periode > m ? v.periode : m), vs[0]?.periode ?? '');
+      const seen = new Set<string>();
+      for (const v of vs) {
+        if (v.periode !== maxPeriode) continue;
+        const cellKey = `${v.landId}|${v.e1Id}`;
+        if (seen.has(cellKey)) continue;
+        seen.add(cellKey);
+        const rec = fcMap.get(v.e1Id) ?? {};
+        for (const [periode, val] of Object.entries((v.monatswerteRest ?? {}) as unknown as MonatswerteRest)) {
+          if (Number(periode.slice(5, 7)) < istGrenze) continue; // nur Forecast-Monate
+          rec[periode] = (rec[periode] ?? 0) + (val?.eur ?? 0);
+        }
+        fcMap.set(v.e1Id, rec);
+      }
+    }
+
+    const zeilen = e1s.map((e) => ({
+      e1Id: e.id,
+      bezeichnung: e.nameDe,
+      istMonate: istMap.get(e.id) ?? {},
+      forecastMonate: fcMap.get(e.id) ?? {},
+      budgetMonate: budMap.get(e.id) ?? {},
+    }));
+
+    return {
+      jahr,
+      stichtag: formatPeriode(aktJahr, aktMonat),
+      monate,
+      restAbMonat: istGrenze, // Monate mit Nummer >= restAbMonat sind Forecast, < sind Ist
+      zeilen,
+    };
+  }
+
   /** Summiert nur die monatswerteRest-Einträge, die am Stichtag noch Forecast sind (Monat >= istGrenze) — verhindert Überlappung mit dem Ist-YTD. */
   private summeForecastAbGrenze(mw: MonatswerteRest, istGrenze: number): number {
     return Object.entries(mw).reduce((s, [periode, val]) => {
