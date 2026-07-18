@@ -42,6 +42,29 @@ async function request<T>(method: string, pfad: string, body?: unknown): Promise
   return data as T;
 }
 
+/** Lädt eine Datei mit Bearer-Auth herunter und stößt den Browser-Download an. */
+export async function downloadDatei(pfad: string, methode: 'GET' | 'POST', dateiname: string): Promise<void> {
+  const token = getToken();
+  const res = await fetch(`${BASE}${pfad}`, { method: methode, headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!res.ok) {
+    let msg = `Fehler ${res.status}`;
+    try {
+      const data = (await res.json()) as { message?: string | string[] };
+      msg = Array.isArray(data?.message) ? data.message.join(', ') : (data?.message ?? msg);
+    } catch {
+      /* Antwort war kein JSON */
+    }
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = dateiname;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
   get: <T>(p: string) => request<T>('GET', p),
   post: <T>(p: string, b?: unknown) => request<T>('POST', p, b),

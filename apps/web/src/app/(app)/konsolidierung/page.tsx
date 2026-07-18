@@ -1,9 +1,9 @@
 'use client';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
-import { api } from '@/lib/api';
-import { Card } from '@/components/ui';
+import { api, downloadDatei } from '@/lib/api';
+import { Button, Card } from '@/components/ui';
 import { monKurz } from '@/lib/monate';
 
 interface Zeile {
@@ -82,13 +82,37 @@ export default function KonsolidierungPage() {
 
   const delta = (v: number) => <span className={v >= 0 ? 'text-ez-ampelGruen' : 'text-ez-ampelRot'}>{f0(v)}</span>;
 
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportFehler, setExportFehler] = useState('');
+  const exportExcel = async () => {
+    setExportBusy(true);
+    setExportFehler('');
+    try {
+      await downloadDatei(`/export/konsolidierung-monatlich?jahr=${jahr}`, 'POST', `konsolidierung-monatlich-${jahr}.xlsx`);
+    } catch (e) {
+      setExportFehler((e as Error).message);
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-ez-primary">Konsolidierung {jahr} — Monatssicht</h1>
-      <p className="text-sm text-gray-500">
-        Umsatz je Produktgruppe über alle Regionen. Abgeschlossene Monate = <b>Actual</b>, offene Monate ={' '}
-        <b>Forecast</b>. Werte in <b>kEUR</b>.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-ez-primary">Konsolidierung {jahr} — Monatssicht</h1>
+          <p className="text-sm text-gray-500">
+            Umsatz je Produktgruppe über alle Regionen. Abgeschlossene Monate = <b>Actual</b>, offene Monate ={' '}
+            <b>Forecast</b>. Werte in <b>kEUR</b>.
+          </p>
+        </div>
+        <div className="text-right">
+          <Button onClick={exportExcel} disabled={exportBusy || !data}>
+            {exportBusy ? t('exportErzeuge') : t('exportExcel')}
+          </Button>
+          {exportFehler && <p className="mt-1 text-xs text-ez-accent">✗ {exportFehler}</p>}
+        </div>
+      </div>
 
       {isLoading && <p className="text-gray-500">Lädt…</p>}
       {error && <p className="text-ez-accent">{(error as Error).message}</p>}

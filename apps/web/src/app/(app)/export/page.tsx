@@ -1,33 +1,9 @@
 'use client';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { getToken } from '@/lib/api';
+import { downloadDatei } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Button, Card } from '@/components/ui';
-
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
-
-/** Lädt eine Datei mit Bearer-Auth herunter (Muster wie reconciliation-Beleg-Download). */
-async function download(pfad: string, methode: 'GET' | 'POST', dateiname: string): Promise<void> {
-  const res = await fetch(`${BASE}${pfad}`, { method: methode, headers: { Authorization: `Bearer ${getToken()}` } });
-  if (!res.ok) {
-    let msg = `Fehler ${res.status}`;
-    try {
-      const data = (await res.json()) as { message?: string | string[] };
-      msg = Array.isArray(data?.message) ? data.message.join(', ') : (data?.message ?? msg);
-    } catch {
-      /* Antwort war kein JSON */
-    }
-    throw new Error(msg);
-  }
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = dateiname;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 function ExportKarte({ titel, beschreibung, format, onDownload }: { titel: string; beschreibung: string; format: string; onDownload: () => Promise<void> }) {
   const t = useTranslations('export');
@@ -76,6 +52,7 @@ export default function ExportPage() {
   const rolle = user?.rolle;
   const darfAbweichung = rolle === 'VERTRIEBSLEITER' || rolle === 'BU_LEITER';
   const darfWord = rolle === 'BU_LEITER';
+  const darfKonsolidierung = rolle === 'VERTRIEBSLEITER' || rolle === 'BU_LEITER' || rolle === 'ADMIN';
 
   return (
     <div className="space-y-5">
@@ -94,12 +71,20 @@ export default function ExportPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
+        {darfKonsolidierung && (
+          <ExportKarte
+            titel={t('konsolidierungTitel')}
+            beschreibung={t('konsolidierungText')}
+            format="XLSX"
+            onDownload={() => downloadDatei(`/export/konsolidierung-monatlich?jahr=${jahr}`, 'POST', `konsolidierung-monatlich-${jahr}.xlsx`)}
+          />
+        )}
         {darfAbweichung && (
           <ExportKarte
             titel={t('abweichungTitel')}
             beschreibung={t('abweichungText')}
             format="XLSX"
-            onDownload={() => download(`/export/abweichungsbericht?jahr=${jahr}`, 'POST', `abweichungsbericht-${jahr}.xlsx`)}
+            onDownload={() => downloadDatei(`/export/abweichungsbericht?jahr=${jahr}`, 'POST', `abweichungsbericht-${jahr}.xlsx`)}
           />
         )}
         {darfWord && (
@@ -107,14 +92,14 @@ export default function ExportPage() {
             titel={t('wordTitel')}
             beschreibung={t('wordText')}
             format="DOCX"
-            onDownload={() => download(`/export/word-report?jahr=${jahr}`, 'POST', `forecast-report-${jahr}.docx`)}
+            onDownload={() => downloadDatei(`/export/word-report?jahr=${jahr}`, 'POST', `forecast-report-${jahr}.docx`)}
           />
         )}
         <ExportKarte
           titel={t('rohdatenTitel')}
           beschreibung={t('rohdatenText')}
           format="CSV"
-          onDownload={() => download(`/export/rohdaten?jahr=${jahr}`, 'GET', `rohdaten-${jahr}.csv`)}
+          onDownload={() => downloadDatei(`/export/rohdaten?jahr=${jahr}`, 'GET', `rohdaten-${jahr}.csv`)}
         />
       </div>
 

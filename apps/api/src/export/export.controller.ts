@@ -26,6 +26,17 @@ export class ExportController {
     res.send(buf);
   }
 
+  @Roles('VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN')
+  @Post('konsolidierung-monatlich')
+  async konsolidierungMonatlich(@Query('jahr') jahr: string, @CurrentUser() aktor: RequestUser, @Res() res: Response): Promise<void> {
+    const buf = await this.service.konsolidierungMonatlichXlsx(this.jahr(jahr), aktor);
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="konsolidierung-monatlich-${this.jahr(jahr)}.xlsx"`,
+    });
+    res.send(buf);
+  }
+
   @Roles('BU_LEITER')
   @Post('word-report')
   async wordReport(@Query('jahr') jahr: string, @CurrentUser() aktor: RequestUser, @Res() res: Response): Promise<void> {
