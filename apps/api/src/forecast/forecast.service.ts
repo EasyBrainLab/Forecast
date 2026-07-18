@@ -217,12 +217,43 @@ export class ForecastService {
       kommentar: dto.kommentar,
     });
 
+    // Empfänger der Anpassungs-Meldung (Controlling + BU-Leitung) vorab ermitteln — so wird im Audit
+    // nachweisbar protokolliert, an wen gemeldet wurde (der Versand selbst folgt nach dem Commit).
+    const meldeEmpfaenger = await this.anpassungsMeldeEmpfaenger();
+
     await this.prisma.$transaction(async (tx) => {
       await this.neueVersionen(tx, periode, regionCode, ForecastStatus.ANGEPASST, aktor, adjust, dto.kommentar);
       await tx.forecastPeriode.update({ where: { id: p.id }, data: { status: ForecastStatus.ANGEPASST } });
-      await this.audit.write({ entitaet: 'ForecastPeriode', entitaetId: p.id, aktion: 'STATUS_WECHSEL', userId: aktor.id, userEmail: aktor.email, nachherWert: { status: 'ANGEPASST', schwellwertVerletzt: irgendVerletzt } }, tx);
+      await this.audit.write({ entitaet: 'ForecastPeriode', entitaetId: p.id, aktion: 'STATUS_WECHSEL', userId: aktor.id, userEmail: aktor.email, nachherWert: { status: 'ANGEPASST', schwellwertVerletzt: irgendVerletzt }, metadaten: { anzahlZellen: adjust.size, gemeldetAn: meldeEmpfaenger } }, tx);
     });
-    return { status: ForecastStatus.ANGEPASST, schwellwertVerletzt: irgendVerletzt };
+
+    // Meldung an Controlling + BU-Leitung nach erfolgreichem Commit. Mail-Fehler brechen die Anpassung
+    // nicht ab (MailService protokolliert sie als MAIL_FEHLER).
+    await this.meldeForecastAnpassung(periode, regionCode, aktor, { anzahlZellen: adjust.size, schwellwertVerletzt: irgendVerletzt, kommentar: dto.kommentar ?? null, empfaenger: meldeEmpfaenger });
+
+    return { status: ForecastStatus.ANGEPASST, schwellwertVerletzt: irgendVerletzt, gemeldetAn: meldeEmpfaenger.length };
+  }
+
+  /** Empfänger der Forecast-Anpassungsmeldung: verifizierte BU-Leitung + konfiguriertes Controlling (Einstellung CONTROLLING_EMAILS). */
+  private async anpassungsMeldeEmpfaenger(): Promise<string[]> {
+    const buLeiter = await this.prisma.user.findMany({ where: { rolle: 'BU_LEITER', status: 'VERIFIZIERT' }, select: { email: true } });
+    const controllingRaw = (await this.prisma.einstellung.findUnique({ where: { key: EINSTELLUNG_KEYS.CONTROLLING_EMAILS } }))?.value ?? '';
+    const controlling = controllingRaw.split(',').map((s) => s.trim()).filter(Boolean);
+    return [...new Set([...buLeiter.map((u) => u.email), ...controlling])];
+  }
+
+  /** Versendet die Anpassungs-Meldung (E&Z-CI). Kein Empfänger -> kein Versand (fail-safe). */
+  private async meldeForecastAnpassung(
+    periode: string,
+    regionCode: string,
+    aktor: RequestUser,
+    info: { anzahlZellen: number; schwellwertVerletzt: boolean; kommentar: string | null; empfaenger: string[] },
+  ): Promise<void> {
+    if (info.empfaenger.length === 0) return;
+    const schwelleHinweis = info.schwellwertVerletzt ? ' Mindestens eine Zelle überschreitet den Schwellwert — Begründung ist hinterlegt.' : '';
+    const kommentarText = info.kommentar?.trim() ? ` Kommentar: ${info.kommentar.trim()}` : '';
+    const text = `${aktor.email} hat den Forecast angepasst. Region ${regionCode}, Periode ${periode}, ${info.anzahlZellen} geänderte Zelle(n).${schwelleHinweis}${kommentarText}`;
+    await Promise.all(info.empfaenger.map((e) => this.mail.send(e, infoMail('Forecast angepasst', `Region ${regionCode} · ${periode}`, text))));
   }
 
   /** F3/F4 -> ZURUECKGEWIESEN, dann F5 (SYSTEM) -> OFFEN. */

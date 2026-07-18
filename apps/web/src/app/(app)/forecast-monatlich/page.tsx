@@ -41,6 +41,18 @@ const ek = (landId: string, e1Id: string, p: string) => `${landId}|${e1Id}|${p}`
 // Anzeige in kEUR (Tausend EUR), ganzzahlig, mit Tausenderpunkt: 300.500 € -> "301", 1.209.500 € -> "1.210".
 const f0 = (v: number) => Math.round(v / 1000).toLocaleString('de-DE');
 
+// Statusfarbe für Zeitleisten-Punkt und Status-Pill (abgeschlossen=grün, offen=gelb, zurückgewiesen=rot, eingereicht=blau).
+const statusDot = (s: string): string =>
+  s === 'ABGESCHLOSSEN' ? 'bg-ez-ampelGruen' : s === 'OFFEN' ? 'bg-yellow-400' : s === 'ZURUECKGEWIESEN' ? 'bg-ez-ampelRot' : 'bg-ez-primary';
+const statusPill = (s: string): string =>
+  s === 'ABGESCHLOSSEN'
+    ? 'bg-ez-ampelGruen/10 text-ez-ampelGruen'
+    : s === 'OFFEN'
+      ? 'bg-yellow-100 text-yellow-700'
+      : s === 'ZURUECKGEWIESEN'
+        ? 'bg-ez-accent/10 text-ez-accent'
+        : 'bg-ez-primary/10 text-ez-primary';
+
 export default function ForecastMonatlichPage() {
   const t = useTranslations('forecastMonat');
   const locale = useLocale();
@@ -180,6 +192,43 @@ export default function ForecastMonatlichPage() {
 
   const delta = (v: number) => <span className={v >= 0 ? 'text-ez-ampelGruen' : 'text-ez-ampelRot'}>{f0(v)}</span>;
 
+  // Auswahl-Modell: Region-Umschalter + Monats-Zeitleiste statt flacher Perioden-Buttonliste.
+  const regionen = useMemo(() => [...new Set((perioden ?? []).map((p) => p.regionCode))].sort(), [perioden]);
+  const selRegion = aktiv?.regionCode ?? regionen[0] ?? null;
+  const regionPerioden = useMemo(
+    () => (perioden ?? []).filter((p) => p.regionCode === selRegion).sort((a, b) => monatNr(a.periode) - monatNr(b.periode)),
+    [perioden, selRegion],
+  );
+  const handlungsbedarf = useMemo(() => {
+    const acc = { offen: 0, eingereicht: 0, zurueck: 0 };
+    for (const p of perioden ?? []) {
+      if (p.status === 'OFFEN') acc.offen++;
+      else if (p.status === 'BESTAETIGT' || p.status === 'ANGEPASST') acc.eingereicht++;
+      else if (p.status === 'ZURUECKGEWIESEN') acc.zurueck++;
+    }
+    return acc;
+  }, [perioden]);
+
+  // Region wählen -> aktivste Periode dieser Region (offen bevorzugt, sonst zurückgewiesen, sonst jüngste).
+  const waehleRegion = (r: string) => {
+    const ps = (perioden ?? []).filter((p) => p.regionCode === r);
+    const ziel =
+      ps.find((p) => p.status === 'OFFEN') ??
+      ps.find((p) => p.status === 'ZURUECKGEWIESEN') ??
+      [...ps].sort((a, b) => monatNr(b.periode) - monatNr(a.periode))[0];
+    if (ziel) {
+      setSel({ periode: ziel.periode, regionCode: r });
+      setEdits({});
+      setComments({});
+    }
+  };
+  const waehlePeriode = (periode: string) => {
+    if (!selRegion) return;
+    setSel({ periode, regionCode: selRegion });
+    setEdits({});
+    setComments({});
+  };
+
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold text-ez-primary">{t('titel')}</h1>
@@ -191,21 +240,81 @@ export default function ForecastMonatlichPage() {
         </Card>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        {perioden?.map((p) => (
-          <button
-            key={p.id}
-            onClick={() => {
-              setSel({ periode: p.periode, regionCode: p.regionCode });
-              setEdits({});
-              setComments({});
-            }}
-            className={`rounded border px-3 py-1 text-sm ${aktiv?.periode === p.periode && aktiv?.regionCode === p.regionCode ? 'border-ez-primary bg-ez-primary text-white' : 'bg-white'}`}
-          >
-            {p.regionCode} · {p.periode} ({p.status})
-          </button>
-        ))}
-      </div>
+      {/* Handlungsbedarf-Leiste: bündelt regionsübergreifend, was zu tun ist. */}
+      {perioden && perioden.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white p-3 text-sm">
+          <span className="mr-1 font-semibold">{t('handlungsbedarf')}</span>
+          {handlungsbedarf.offen > 0 && (
+            <span className="inline-flex items-center gap-2 rounded-full bg-yellow-50 px-3 py-1 text-xs font-semibold text-yellow-700">
+              <span className="h-2 w-2 rounded-full bg-yellow-400" />
+              {t('chipOffen', { n: handlungsbedarf.offen })}
+            </span>
+          )}
+          {handlungsbedarf.eingereicht > 0 && (
+            <span className="inline-flex items-center gap-2 rounded-full bg-ez-primary/10 px-3 py-1 text-xs font-semibold text-ez-primary">
+              <span className="h-2 w-2 rounded-full bg-ez-primary" />
+              {t('chipEingereicht', { n: handlungsbedarf.eingereicht })}
+            </span>
+          )}
+          {handlungsbedarf.zurueck > 0 && (
+            <span className="inline-flex items-center gap-2 rounded-full bg-ez-accent/10 px-3 py-1 text-xs font-semibold text-ez-accent">
+              <span className="h-2 w-2 rounded-full bg-ez-ampelRot" />
+              {t('chipZurueck', { n: handlungsbedarf.zurueck })}
+            </span>
+          )}
+          {handlungsbedarf.offen + handlungsbedarf.eingereicht + handlungsbedarf.zurueck === 0 && (
+            <span className="text-gray-500">{t('keinHandlungsbedarf')}</span>
+          )}
+        </div>
+      )}
+
+      {/* Region-Umschalter (nur eigene Regionen) + Monats-Zeitleiste mit Statusfarben. */}
+      {regionen.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">{t('region')}</span>
+            <div className="inline-flex flex-wrap gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1">
+              {regionen.map((r) => (
+                <button
+                  key={r}
+                  onClick={() => waehleRegion(r)}
+                  aria-pressed={selRegion === r}
+                  className={`rounded-md px-3 py-1 text-sm font-semibold ${selRegion === r ? 'bg-white text-ez-primary shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex gap-1 overflow-x-auto pb-1">
+            {regionPerioden.map((p) => {
+              const aktivMo = aktiv?.periode === p.periode && aktiv?.regionCode === selRegion;
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => waehlePeriode(p.periode)}
+                  aria-current={aktivMo}
+                  title={p.status}
+                  className={`min-w-[64px] rounded-lg border px-2 py-2 text-center transition-colors ${aktivMo ? 'border-ez-primary bg-ez-primary/5' : 'border-gray-200 bg-white hover:border-gray-300'}`}
+                >
+                  <div className={`text-xs font-semibold ${aktivMo ? 'text-ez-primary' : 'text-gray-600'}`}>
+                    {MONATS_KURZ[monatNr(p.periode) - 1]}. {p.periode.slice(2, 4)}
+                  </div>
+                  <span className={`mx-auto mt-1.5 block h-2 w-2 rounded-full ${statusDot(p.status)}`} />
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-wrap gap-3 text-[11px] text-gray-500">
+            <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-ez-ampelGruen" />{t('legAbgeschlossen')}</span>
+            <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-yellow-400" />{t('legOffen')}</span>
+            <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-ez-primary" />{t('legEingereicht')}</span>
+            <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-ez-ampelRot" />{t('legZurueck')}</span>
+          </div>
+        </div>
+      )}
 
       {matrix && totals && (
         <Card className="space-y-4">
@@ -214,7 +323,7 @@ export default function ForecastMonatlichPage() {
               <span className="font-semibold">
                 {matrix.regionCode} · {matrix.periode}
               </span>
-              <span className="ml-2 rounded bg-gray-100 px-2 py-0.5 text-xs">{matrix.status}</span>
+              <span className={`ml-2 rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusPill(matrix.status)}`}>{matrix.status}</span>
               <span className="ml-2 text-xs text-gray-400">{t('monatsSchwellwert', { schwelle })}</span>
             </div>
             <div className="flex flex-wrap items-start gap-2">

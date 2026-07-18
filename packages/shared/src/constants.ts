@@ -131,6 +131,7 @@ export const EINSTELLUNG_KEYS = {
   ABGLEICH_TOLERANZ_PROZENT: 'ABGLEICH_TOLERANZ_PROZENT', // Toleranzband GL<->Sales-Flash
   REPORT_DEADLINE_TAG: 'REPORT_DEADLINE_TAG', // Abgabefrist Monatsbericht: Tag im Folgemonat
   AUDIO_AUFBEWAHRUNG: 'AUDIO_AUFBEWAHRUNG', // Voice-Diktat: SOFORT_LOESCHEN | TAGE_30 | BEHALTEN
+  CONTROLLING_EMAILS: 'CONTROLLING_EMAILS', // Komma-Liste: Empfänger für Forecast-Anpassungsmeldungen (Controlling)
 } as const;
 
 export const EINSTELLUNG_DEFAULTS: Readonly<Record<string, string>> = {
@@ -145,6 +146,7 @@ export const EINSTELLUNG_DEFAULTS: Readonly<Record<string, string>> = {
   [EINSTELLUNG_KEYS.ABGLEICH_TOLERANZ_PROZENT]: '2',
   [EINSTELLUNG_KEYS.REPORT_DEADLINE_TAG]: '10',
   [EINSTELLUNG_KEYS.AUDIO_AUFBEWAHRUNG]: 'SOFORT_LOESCHEN',
+  [EINSTELLUNG_KEYS.CONTROLLING_EMAILS]: '', // leer = nur BU-Leitung wird benachrichtigt
 };
 
 // Erwartete Abnahme-Sollwerte des Ist-Erstimports (Ground-Truth, §16)

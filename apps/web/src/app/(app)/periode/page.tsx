@@ -85,6 +85,22 @@ export default function PeriodePage() {
     }
   };
 
+  // Controlling-Empfänger für Forecast-Anpassungsmeldungen (nur ADMIN pflegbar).
+  const controllingEmails = einstellungen?.find((e) => e.key === 'CONTROLLING_EMAILS')?.value ?? '';
+  const [ctrlDraft, setCtrlDraft] = useState<string | null>(null);
+  const [ctrlMsg, setCtrlMsg] = useState('');
+  const ctrlWert = ctrlDraft ?? controllingEmails;
+  const speichereControlling = async () => {
+    setCtrlMsg('');
+    try {
+      await api.patch('/stammdaten/admin/einstellungen/CONTROLLING_EMAILS', { value: ctrlWert.trim() });
+      qc.invalidateQueries({ queryKey: ['einstellungen'] });
+      setCtrlMsg('Gespeichert.');
+    } catch (e) {
+      setCtrlMsg(e instanceof ApiError ? e.message : 'Speichern fehlgeschlagen.');
+    }
+  };
+
   const reload = () => {
     qc.invalidateQueries({ queryKey: ['periode-board'] });
     qc.invalidateQueries({ queryKey: ['periode-detail'] });
@@ -146,6 +162,25 @@ export default function PeriodePage() {
       </div>
 
       {fehler && <p className="rounded bg-ez-accent/10 p-2 text-sm text-ez-accent">{fehler}</p>}
+
+      {user?.rolle === 'ADMIN' && (
+        <Card className="space-y-2 p-4">
+          <h2 className="text-sm font-semibold text-ez-primary">Controlling-Empfänger für Forecast-Anpassungen</h2>
+          <p className="text-xs text-gray-500">
+            Komma-getrennte E-Mail-Adressen. Bei jeder Forecast-Anpassung eines AGM wird — zusätzlich zur BU-Leitung — an diese Adressen gemeldet. Leer = nur BU-Leitung.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              className="min-w-[280px] flex-1 rounded border border-gray-300 px-2 py-1 text-sm"
+              placeholder="controlling@ezag.com, finance@ezag.com"
+              value={ctrlWert}
+              onChange={(e) => setCtrlDraft(e.target.value)}
+            />
+            <Button onClick={speichereControlling}>Speichern</Button>
+            {ctrlMsg && <span className="text-xs text-ez-ampelGruen">{ctrlMsg}</span>}
+          </div>
+        </Card>
+      )}
 
       <Card className="p-0 overflow-hidden">
         <table className="w-full text-sm">
