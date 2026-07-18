@@ -175,6 +175,8 @@
     "actualFc": "Actual+FC",
     "deltaBudActBud": "ΔBud/Act+Bud",
     "deltaBudActFc": "ΔBud/Act+FC",
+    "exportExcel": "Excel export",
+    "exportErzeuge": "Generating…",
     "summe": "Total {region}",
     "begruendungNoetig": "Justification required for {anzahl} month(s) with variance > {schwelle} %.",
     "begruendungPlaceholder": "Justification for the variance (mandatory)…",
@@ -481,6 +483,8 @@
   "export": {
     "titel": "Export center",
     "beschreibung": "Reports and raw data at the push of a button — data as of the selected year.",
+    "konsolidierungTitel": "Consolidation — monthly view",
+    "konsolidierungText": "Revenue per product group across all regions in forecast format — actual/forecast by month, ∑ columns, BUD and Δ columns (kEUR). Layout matches the app view.",
     "abweichungTitel": "Excel variance report",
     "abweichungText": "Budget vs. forecast vs. actuals by region — with Δ absolute/%, traffic-light logic and frozen header (kEUR).",
     "wordTitel": "Word management report",

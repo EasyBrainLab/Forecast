@@ -175,6 +175,8 @@
     "actualFc": "Actual+FC",
     "deltaBudActBud": "ΔBud/Act+Bud",
     "deltaBudActFc": "ΔBud/Act+FC",
+    "exportExcel": "Excel-Export",
+    "exportErzeuge": "Erzeuge…",
     "summe": "Summe {region}",
     "begruendungNoetig": "Begründung erforderlich für {anzahl} Monat(e) mit Abweichung > {schwelle} %.",
     "begruendungPlaceholder": "Begründung der Abweichung (Pflicht)…",
@@ -481,6 +483,8 @@
   "export": {
     "titel": "Export-Center",
     "beschreibung": "Berichte und Rohdaten per Knopfdruck — Datenstand des gewählten Jahres.",
+    "konsolidierungTitel": "Konsolidierung — Monatssicht",
+    "konsolidierungText": "Umsatz je Produktgruppe über alle Regionen im Forecast-Format — Actual/Forecast je Monat, ∑-Spalten, BUD und Δ-Spalten (kEUR). Layout wie die App-Sicht.",
     "abweichungTitel": "Excel-Abweichungsbericht",
     "abweichungText": "Budget vs. Forecast vs. Ist je Region — mit Δ absolut/%, Ampellogik und fixierter Kopfzeile (kEUR).",
     "wordTitel": "Word-Managementbericht",

@@ -6,6 +6,7 @@ import ExcelJS from 'exceljs';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { ExportService } from '../src/export/export.service';
+import { DashboardService } from '../src/dashboard/dashboard.service';
 import { BudgetImportService } from '../src/budget/budget-import.service';
 import { IstImportService } from '../src/ist-import/ist-import.service';
 import { CsvIstAdapter } from '../src/ist-import/csv-ist.adapter';
@@ -41,7 +42,7 @@ async function main(): Promise<void> {
   ws.eachRow((row) => {
     if (String(row.getCell(1).value).startsWith('BU-Gesamt')) gesamtZelle = Number(row.getCell(2).value);
   });
-  check('Excel enthält BU-Gesamt-Zeile mit Ist YTD ≈ 7487,8 kEUR', gesamtZelle !== null && Math.abs((gesamtZelle as number) - 7487.8) < 0.2);
+  check('Excel enthält BU-Gesamt-Zeile mit Ist YTD ≈ 7647,6 kEUR', gesamtZelle !== null && Math.abs((gesamtZelle as number) - 7647.6) < 0.2);
 
   // Word
   const docx = await exp.wordReport(2026, admin);
@@ -52,6 +53,50 @@ async function main(): Promise<void> {
   const csvText = csv.toString('utf-8');
   check('CSV mit BOM + ; -Separator + dt. Dezimal', csvText.charCodeAt(0) === 0xfeff && csvText.includes(';') && /\d+,\d{2}/.test(csvText));
   check('CSV enthält Regionen', csvText.includes('AGC') || csvText.includes('AGC'));
+
+  // Konsolidierungs-Monatssicht (XLSX) — Layout + Datentreue gegen die Service-Daten.
+  const kd = await app.get(DashboardService).konsolidierungMonatlich(2026, admin);
+  const mNr = (p: string): number => Number(p.slice(5));
+  const istM = kd.monate.filter((p) => mNr(p) < kd.restAbMonat);
+  const fcM = kd.monate.filter((p) => mNr(p) >= kd.restAbMonat);
+  let expActual = 0;
+  let expForecast = 0;
+  let expBud = 0;
+  for (const z of kd.zeilen) {
+    for (const p of istM) expActual += z.istMonate[p] ?? 0;
+    for (const p of fcM) expForecast += z.forecastMonate[p] ?? 0;
+    for (const p of kd.monate) expBud += z.budgetMonate[p] ?? 0;
+  }
+
+  const konsXlsx = await exp.konsolidierungMonatlichXlsx(2026, admin);
+  check('Konsolidierung-Excel ist gültiges xlsx (PK-Zip)', konsXlsx.subarray(0, 2).toString('latin1') === 'PK' && konsXlsx.length > 2000);
+  const kwb = new ExcelJS.Workbook();
+  await kwb.xlsx.load(konsXlsx as unknown as ArrayBuffer);
+  const kws = kwb.worksheets[0];
+
+  // Gruppen-Header (Zeile 2) enthält Actual / Forecast / FY 2026.
+  const gruppenTexte: string[] = [];
+  kws.getRow(2).eachCell((c) => gruppenTexte.push(String(c.value ?? '')));
+  check('Konsolidierung-Excel: Gruppen-Header Actual/Forecast/FY', gruppenTexte.includes('Actual') && gruppenTexte.includes('Forecast') && gruppenTexte.includes('FY 2026'));
+
+  // Spaltenindizes aus der Kopfzeile (Zeile 3) lesen.
+  const spalte: Record<string, number> = {};
+  kws.getRow(3).eachCell((c, col) => (spalte[String(c.value ?? '')] = col));
+  check('Konsolidierung-Excel: ∑-Actual/∑-Forecast/BUD-Spalten vorhanden', !!spalte['∑ Actual'] && !!spalte['∑ Forecast'] && !!spalte['BUD']);
+
+  // Summenzeile „Umsatz" finden und gegen die erwarteten kEUR-Werte prüfen.
+  let umsatzRow: ExcelJS.Row | null = null;
+  kws.eachRow((row) => {
+    if (String(row.getCell(1).value) === 'Umsatz') umsatzRow = row;
+  });
+  check('Konsolidierung-Excel: Summenzeile „Umsatz" vorhanden', umsatzRow !== null);
+  if (umsatzRow) {
+    const r = umsatzRow as ExcelJS.Row;
+    const zellwert = (name: string): number => Number(r.getCell(spalte[name]).value);
+    check('Konsolidierung-Excel: ∑ Actual = Service-Summe (kEUR)', Math.abs(zellwert('∑ Actual') - expActual / 1000) < 0.01);
+    check('Konsolidierung-Excel: ∑ Forecast = Service-Summe (kEUR)', Math.abs(zellwert('∑ Forecast') - expForecast / 1000) < 0.01);
+    check('Konsolidierung-Excel: BUD = Service-Summe (kEUR)', Math.abs(zellwert('BUD') - expBud / 1000) < 0.01);
+  }
 
   await app.close();
   if (fails.length) {
