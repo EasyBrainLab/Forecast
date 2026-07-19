@@ -7,6 +7,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { ExportService } from '../src/export/export.service';
 import { DashboardService } from '../src/dashboard/dashboard.service';
+import { ForecastService } from '../src/forecast/forecast.service';
 import { BudgetImportService } from '../src/budget/budget-import.service';
 import { IstImportService } from '../src/ist-import/ist-import.service';
 import { CsvIstAdapter } from '../src/ist-import/csv-ist.adapter';
@@ -96,6 +97,29 @@ async function main(): Promise<void> {
     check('Konsolidierung-Excel: ∑ Actual = Service-Summe (kEUR)', Math.abs(zellwert('∑ Actual') - expActual / 1000) < 0.01);
     check('Konsolidierung-Excel: ∑ Forecast = Service-Summe (kEUR)', Math.abs(zellwert('∑ Forecast') - expForecast / 1000) < 0.01);
     check('Konsolidierung-Excel: BUD = Service-Summe (kEUR)', Math.abs(zellwert('BUD') - expBud / 1000) < 0.01);
+  }
+
+  // Forecast-Matrix-Export (AGM-Archiv) — prüft DI (ExportService→ForecastService) + Layout.
+  const fsvc = app.get(ForecastService);
+  const budRegion = await prisma.budget.findFirst({ where: { jahr: 2026, monat: { in: [7, 8, 9, 10, 11, 12] }, status: 'AKTIV', istRegionsreserve: false, landId: { not: null } }, select: { regionCode: true } });
+  if (budRegion) {
+    await fsvc.oeffnePeriode('2026-07', budRegion.regionCode, admin);
+    const fmXlsx = await exp.forecastMatrixXlsx('2026-07', budRegion.regionCode, admin);
+    check('Forecast-Matrix-Export ist gültiges xlsx (PK-Zip)', fmXlsx.subarray(0, 2).toString('latin1') === 'PK' && fmXlsx.length > 2000);
+    const fwb = new ExcelJS.Workbook();
+    await fwb.xlsx.load(fmXlsx as unknown as ArrayBuffer);
+    const fws = fwb.worksheets[0];
+    const gruppen: string[] = [];
+    fws.getRow(2).eachCell((c) => gruppen.push(String(c.value ?? '')));
+    check('Forecast-Matrix-Export: Gruppen-Header Actual/Forecast/FY', gruppen.includes('Actual') && gruppen.includes('Forecast') && gruppen.some((g) => g.startsWith('FY 20')));
+    const kopf: string[] = [];
+    fws.getRow(3).eachCell((c) => kopf.push(String(c.value ?? '')));
+    check('Forecast-Matrix-Export: Kopf mit Produktgruppe + Land', kopf[0] === 'Produktgruppe' && kopf[1] === 'Land');
+    let hatSumme = false;
+    fws.eachRow((row) => {
+      if (String(row.getCell(1).value).startsWith('Summe ')) hatSumme = true;
+    });
+    check('Forecast-Matrix-Export: Summenzeile vorhanden', hatSumme);
   }
 
   await app.close();

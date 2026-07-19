@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
-import { api } from '@/lib/api';
+import { api, downloadDatei } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Button, Card } from '@/components/ui';
 import { PeriodenAktionen } from '@/components/perioden-aktionen';
@@ -189,6 +189,22 @@ export default function ForecastMonatlichPage() {
     onSuccess: () => qc.invalidateQueries(),
   });
 
+  // Excel-Export der eigenen Forecast-Matrix (Monats-Archiv der Region/Periode).
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportFehler, setExportFehler] = useState('');
+  const exportMatrix = async () => {
+    if (!aktiv) return;
+    setExportBusy(true);
+    setExportFehler('');
+    try {
+      await downloadDatei(`/export/forecast-matrix?periode=${aktiv.periode}&regionCode=${aktiv.regionCode}`, 'GET', `forecast-${aktiv.regionCode}-${aktiv.periode}.xlsx`);
+    } catch (e) {
+      setExportFehler((e as Error).message);
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
   // Sortierung E1 -> Land + Gruppen-Markierung (E1-Label nur in erster Zeile der Gruppe).
   const zeilen = useMemo(() => {
     if (!matrix) return [] as { z: Zelle; groupStart: boolean }[];
@@ -361,6 +377,12 @@ export default function ForecastMonatlichPage() {
               <span className="ml-2 text-xs text-gray-400">{t('monatsSchwellwert', { schwelle })}</span>
             </div>
             <div className="flex flex-wrap items-start gap-2">
+              <div className="flex flex-col items-start">
+                <Button variant="ghost" onClick={exportMatrix} disabled={exportBusy}>
+                  {exportBusy ? t('exportErzeuge') : t('exportExcel')}
+                </Button>
+                {exportFehler && <span className="mt-1 text-xs text-ez-accent">✗ {exportFehler}</span>}
+              </div>
               {matrix.status === 'OFFEN' && user?.rolle === 'AGM' && Object.keys(edits).length === 0 && (
                 <Button onClick={() => bestaetigen.mutate()} disabled={bestaetigen.isPending}>
                   {bestaetigen.isPending ? t('bestaetigt') : t('bestaetigen')}

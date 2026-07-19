@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import { AlignmentType, Document, HeadingLevel, Packer, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } from 'docx';
 import { DashboardService } from '../dashboard/dashboard.service';
+import { ForecastService } from '../forecast/forecast.service';
 import type { RequestUser } from '../common/decorators/current-user.decorator';
 
 // E&Z-CI
@@ -24,7 +25,10 @@ const monatNr = (periode: string): number => Number(periode.slice(5));
 
 @Injectable()
 export class ExportService {
-  constructor(private readonly dashboard: DashboardService) {}
+  constructor(
+    private readonly dashboard: DashboardService,
+    private readonly forecast: ForecastService,
+  ) {}
 
   /** Excel-Abweichungsbericht (kEUR, Farblogik, fixierte Kopfzeile) — Layout-Referenz Konsolidierungsdatei. */
   async abweichungsbericht(jahr: number, aktor: RequestUser): Promise<Buffer> {
@@ -204,6 +208,147 @@ export class ExportService {
 
     const arr = await wb.xlsx.writeBuffer();
     return Buffer.from(arr);
+  }
+
+  /**
+   * Excel-Export der eigenen Forecast-Matrix (Land × Produktgruppe) einer Region/Periode — Layout wie die
+   * App-Sicht (/forecast-monatlich): Actual je Monat, Forecast je Monat, ∑-Spalten, BUD & Δ. Werte in kEUR.
+   * Der AGM kann damit seine Monatseingaben archivieren. Scope-geprüft über matrix() (AGM nur eigene Region).
+   */
+  async forecastMatrixXlsx(periode: string, regionCode: string, aktor: RequestUser): Promise<Buffer> {
+    const m = await this.forecast.matrix(periode, regionCode, aktor);
+    const jj = periode.slice(2, 4);
+    const istMonate = m.monate.filter((p) => monatNr(p) < m.restAbMonat);
+    const fcMonate = m.monate.filter((p) => monatNr(p) >= m.restAbMonat);
+
+    type Zelle = (typeof m.zellen)[number];
+    const fcEur = (z: Zelle, p: string): number => {
+      const mw = z.monatswerteRest as unknown as Record<string, { eur?: number } | undefined> | null;
+      return mw?.[p]?.eur ?? z.budgetMonate[p] ?? 0;
+    };
+    const metrik = (z: Zelle) => {
+      const summeActual = istMonate.reduce((s, p) => s + (z.istMonate[p] ?? 0), 0);
+      const summeForecast = fcMonate.reduce((s, p) => s + fcEur(z, p), 0);
+      const bud = m.monate.reduce((s, p) => s + (z.budgetMonate[p] ?? 0), 0);
+      const budRest = fcMonate.reduce((s, p) => s + (z.budgetMonate[p] ?? 0), 0);
+      const actBud = summeActual + budRest;
+      const actFc = summeActual + summeForecast;
+      return { summeActual, summeForecast, bud, actBud, actFc, dBudActBud: actBud - bud, dBudActFc: actFc - bud };
+    };
+
+    // Layout: 1 Produktgruppe | 2 Land | N Ist-Monate | ∑ Actual | M FC-Monate | ∑ Forecast | 5× FY.
+    const N = istMonate.length;
+    const M = fcMonate.length;
+    const cSumActual = 3 + N;
+    const cFcStart = 4 + N;
+    const cSumForecast = 4 + N + M;
+    const cBud = 5 + N + M;
+    const cLast = 9 + N + M;
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Forecast-Portal';
+    const ws = wb.addWorksheet(`Forecast ${regionCode} ${periode}`, { views: [{ state: 'frozen', xSplit: 2, ySplit: 3 }] });
+
+    ws.mergeCells(1, 1, 1, cLast);
+    ws.getCell(1, 1).value = `Forecast ${regionCode} · ${periode} — Monatssicht (kEUR) · Status ${m.status}`;
+    ws.getCell(1, 1).font = { bold: true, size: 14, color: { argb: `FF${PRIMARY}` } };
+
+    const gruppe = (left: number, right: number, text: string, bg: string) => {
+      if (right > left) ws.mergeCells(2, left, 2, right);
+      const c = ws.getCell(2, left);
+      c.value = text;
+      c.alignment = { horizontal: 'center' };
+      c.font = { bold: true, color: { argb: `FF${PRIMARY}` } };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${bg}` } };
+    };
+    gruppe(3, cSumActual, 'Actual', ACTUAL_BG);
+    gruppe(cFcStart, cSumForecast, 'Forecast', FORECAST_BG);
+    gruppe(cBud, cLast, `FY 20${jj}`, FY_BG);
+
+    const kopf: string[] = ['Produktgruppe', 'Land'];
+    for (const p of istMonate) kopf.push(`${MON_KURZ[monatNr(p) - 1]}. ${jj}`);
+    kopf.push('∑ Actual');
+    for (const p of fcMonate) kopf.push(`${MON_KURZ[monatNr(p) - 1]}. ${jj}`);
+    kopf.push('∑ Forecast', 'BUD', 'Actual+BUD', 'Actual+FC', 'ΔBud/Act+Bud', 'ΔBud/Act+FC');
+    const hr = ws.getRow(3);
+    kopf.forEach((text, i) => {
+      const c = hr.getCell(i + 1);
+      c.value = text;
+      c.font = { bold: true };
+      c.alignment = { horizontal: i <= 1 ? 'left' : 'right' };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${KOPF_BG}` } };
+    });
+    hr.commit();
+
+    const NUM = '#,##0';
+    const setNum = (row: ExcelJS.Row, col: number, eur: number, opts?: { bold?: boolean; delta?: boolean; leerBei0?: boolean; bg?: string }) => {
+      const c = row.getCell(col);
+      c.numFmt = NUM;
+      c.alignment = { horizontal: 'right' };
+      if (opts?.bold) c.font = { ...(c.font ?? {}), bold: true };
+      if (opts?.bg) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${opts.bg}` } };
+      if (opts?.leerBei0 && eur === 0) {
+        c.value = null;
+        return;
+      }
+      c.value = kEurWert(eur);
+      if (opts?.delta) c.font = { ...(c.font ?? {}), color: { argb: `FF${eur >= 0 ? GRUEN : ACCENT}` } };
+    };
+
+    const sorted = [...m.zellen].sort((a, b) => a.e1Name.localeCompare(b.e1Name) || a.landName.localeCompare(b.landName));
+    const acc = { summeActual: 0, summeForecast: 0, bud: 0, actBud: 0, actFc: 0, dBudActBud: 0, dBudActFc: 0 };
+    const istSum: Record<string, number> = Object.fromEntries(istMonate.map((p) => [p, 0]));
+    const fcSum: Record<string, number> = Object.fromEntries(fcMonate.map((p) => [p, 0]));
+    for (const z of sorted) {
+      const row = ws.addRow([]);
+      row.getCell(1).value = z.e1Name;
+      row.getCell(1).font = { bold: true };
+      row.getCell(2).value = z.landName;
+      const mm = metrik(z);
+      istMonate.forEach((p, i) => {
+        setNum(row, 3 + i, z.istMonate[p] ?? 0, { leerBei0: true });
+        istSum[p] += z.istMonate[p] ?? 0;
+      });
+      setNum(row, cSumActual, mm.summeActual, { bold: true, bg: ACTUAL_BG });
+      fcMonate.forEach((p, i) => {
+        setNum(row, cFcStart + i, fcEur(z, p), { leerBei0: true });
+        fcSum[p] += fcEur(z, p);
+      });
+      setNum(row, cSumForecast, mm.summeForecast, { bold: true, bg: FORECAST_BG });
+      setNum(row, cBud, mm.bud, { bg: FY_BG });
+      setNum(row, cBud + 1, mm.actBud);
+      setNum(row, cBud + 2, mm.actFc, { bold: true });
+      setNum(row, cBud + 3, mm.dBudActBud, { delta: true });
+      setNum(row, cBud + 4, mm.dBudActFc, { delta: true });
+      acc.summeActual += mm.summeActual;
+      acc.summeForecast += mm.summeForecast;
+      acc.bud += mm.bud;
+      acc.actBud += mm.actBud;
+      acc.actFc += mm.actFc;
+      acc.dBudActBud += mm.dBudActBud;
+      acc.dBudActFc += mm.dBudActFc;
+    }
+
+    const sumRow = ws.addRow([]);
+    sumRow.getCell(1).value = `Summe ${regionCode}`;
+    istMonate.forEach((p, i) => setNum(sumRow, 3 + i, istSum[p]));
+    setNum(sumRow, cSumActual, acc.summeActual);
+    fcMonate.forEach((p, i) => setNum(sumRow, cFcStart + i, fcSum[p]));
+    setNum(sumRow, cSumForecast, acc.summeForecast);
+    setNum(sumRow, cBud, acc.bud);
+    setNum(sumRow, cBud + 1, acc.actBud);
+    setNum(sumRow, cBud + 2, acc.actFc);
+    setNum(sumRow, cBud + 3, acc.dBudActBud, { delta: true });
+    setNum(sumRow, cBud + 4, acc.dBudActFc, { delta: true });
+    sumRow.eachCell((c) => (c.font = { ...(c.font ?? {}), bold: true }));
+    sumRow.getCell(1).border = { top: { style: 'medium' } };
+
+    ws.getColumn(1).width = 20;
+    ws.getColumn(2).width = 16;
+    for (let col = 3; col <= cLast; col++) ws.getColumn(col).width = col >= cBud + 3 ? 14 : 10;
+
+    const arr2 = await wb.xlsx.writeBuffer();
+    return Buffer.from(arr2);
   }
 
   /** Word-Report im E&Z-CI (Arial, Primärblau/Akzentrot). */
