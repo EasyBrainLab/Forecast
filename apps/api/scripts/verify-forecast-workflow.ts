@@ -21,7 +21,7 @@ async function main(): Promise<void> {
 
   await prisma.regionsVerantwortung.deleteMany({ where: { user: { email: { endsWith: '@fc.test' } } } });
   await prisma.user.deleteMany({ where: { email: { endsWith: '@fc.test' } } });
-  const mk = async (email: string, rolle: 'AGM' | 'VERTRIEBSLEITER'): Promise<RequestUser> => {
+  const mk = async (email: string, rolle: 'AGM' | 'VERTRIEBSLEITER' | 'BU_LEITER'): Promise<RequestUser> => {
     const u = await prisma.user.create({ data: { email, name: email, rolle, status: 'VERIFIZIERT', passwortHash: 'x' } });
     return { id: u.id, email: u.email, rolle };
   };
@@ -29,6 +29,7 @@ async function main(): Promise<void> {
   const system: RequestUser = { id: adminRec.id, email: 'SYSTEM', rolle: 'BU_LEITER' };
   const agm = await mk('agm@fc.test', 'AGM');
   const vl = await mk('vl@fc.test', 'VERTRIEBSLEITER');
+  const bu = await mk('bu@fc.test', 'BU_LEITER');
 
   const b = await prisma.budget.findFirstOrThrow({ where: { jahr: 2026, monat: { in: [6, 7, 8, 9, 10, 11, 12] }, status: 'AKTIV', istRegionsreserve: false, landId: { not: null } }, select: { regionCode: true } });
   const region = b.regionCode;
@@ -80,6 +81,23 @@ async function main(): Promise<void> {
   const pWo = await prisma.forecastPeriode.findUniqueOrThrow({ where: { periode_regionCode: { periode, regionCode: region } } });
   check('F9 ABGESCHLOSSEN→OFFEN (VL, mit Begründung)', wo.status === 'OFFEN' && pWo.status === 'OFFEN' && pWo.abgeschlossenAm === null);
   check('AGM kann nach Wiedereröffnung wieder bestätigen', (await svc.bestaetigen(periode, region, agm)).status === 'BESTAETIGT');
+
+  // Prozess 1: Zurücksetzen eines fertiggemeldeten Forecasts auf OFFEN durch die Leitung (BU-Leiter).
+  await expectStatus('Zurücksetzen ohne Begründung → 422', 422, () => svc.zurueckweisen(periode, region, bu, '   '));
+  check('Zurücksetzen BESTAETIGT→OFFEN (BU-Leiter)', (await svc.zurueckweisen(periode, region, bu, 'AGM meldete versehentlich fertig')).status === 'OFFEN');
+  check('AGM bestätigt erneut', (await svc.bestaetigen(periode, region, agm)).status === 'BESTAETIGT');
+
+  // Prozess 2: Fremdüberschreibung durch die Leitung (F10/F11) + Kenntnisnahme durch AGM.
+  await expectStatus('Überschreiben ohne Begründung → 422', 422, () => svc.ueberschreiben(periode, region, vl, { zellen: [zelle], begruendung: '' }));
+  await expectStatus('AGM darf nicht überschreiben → 403', 403, () => svc.ueberschreiben(periode, region, agm, { zellen: [zelle], begruendung: 'x' }));
+  const ueb = await svc.ueberschreiben(periode, region, vl, { zellen: [zelle], begruendung: 'Managementkorrektur Q3' });
+  const pUeb = await prisma.forecastPeriode.findUniqueOrThrow({ where: { periode_regionCode: { periode, regionCode: region } } });
+  check('F10 BESTAETIGT→ANGEPASST (VL überschreibt)', ueb.status === 'ANGEPASST' && pUeb.fremdaenderungAm !== null && pUeb.fremdaenderungVon === vl.email && pUeb.fremdaenderungQuittiertAm === null);
+  check('F11 ANGEPASST→ANGEPASST (BU überschreibt erneut)', (await svc.ueberschreiben(periode, region, bu, { zellen: [zelle], begruendung: 'Nachkorrektur' })).status === 'ANGEPASST');
+  await svc.quittieren(periode, region, agm);
+  const pQ = await prisma.forecastPeriode.findUniqueOrThrow({ where: { periode_regionCode: { periode, regionCode: region } } });
+  check('AGM nimmt Fremdüberschreibung zur Kenntnis', pQ.fremdaenderungQuittiertAm !== null);
+  await expectStatus('Erneutes Quittieren ohne offene Fremdänderung → 400', 400, () => svc.quittieren(periode, region, agm));
 
   // Kaskade: 07 + 08 zusätzlich öffnen (Restmonate haben Budgetzeilen), dann nur die jüngste abschließen.
   await svc.oeffnePeriode('2026-07', region, admin);

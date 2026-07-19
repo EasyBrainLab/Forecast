@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ALLE_ROLLEN, Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, type RequestUser } from '../common/decorators/current-user.decorator';
 import { ForecastService } from './forecast.service';
-import { AnpassenDto, OeffnePeriodeDto, WiederOeffnenDto, ZurueckweisenDto } from './forecast.dto';
+import { AnpassenDto, OeffnePeriodeDto, UeberschreibenDto, WiederOeffnenDto, ZurueckweisenDto } from './forecast.dto';
 import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('forecast')
@@ -55,10 +55,25 @@ export class ForecastController {
     return this.service.anpassen(periode, regionCode, aktor, dto);
   }
 
-  @Roles('VERTRIEBSLEITER')
+  /** Fertiggemeldeten Forecast (BESTAETIGT/ANGEPASST) auf OFFEN zurücksetzen — Leitung + Admin, Begründung Pflicht. */
+  @Roles('VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN')
   @Post(':periode/:regionCode/zurueckweisen')
   zurueckweisen(@Param('periode') periode: string, @Param('regionCode') regionCode: string, @Body() dto: ZurueckweisenDto, @CurrentUser() aktor: RequestUser) {
     return this.service.zurueckweisen(periode, regionCode, aktor, dto.begruendung);
+  }
+
+  /** Fremdüberschreibung eines fertiggemeldeten Forecasts durch die Leitung (F10/F11); AGM wird informiert. */
+  @Roles('VERTRIEBSLEITER', 'BU_LEITER')
+  @Post(':periode/:regionCode/ueberschreiben')
+  ueberschreiben(@Param('periode') periode: string, @Param('regionCode') regionCode: string, @Body() dto: UeberschreibenDto, @CurrentUser() aktor: RequestUser) {
+    return this.service.ueberschreiben(periode, regionCode, aktor, dto);
+  }
+
+  /** AGM nimmt eine Fremdüberschreibung zur Kenntnis. */
+  @Roles('AGM')
+  @Post(':periode/:regionCode/quittieren')
+  quittieren(@Param('periode') periode: string, @Param('regionCode') regionCode: string, @CurrentUser() aktor: RequestUser) {
+    return this.service.quittieren(periode, regionCode, aktor);
   }
 
   /** F6/F7/F8 — schließt die Periode und kaskadierend alle älteren offenen Perioden der Region. */

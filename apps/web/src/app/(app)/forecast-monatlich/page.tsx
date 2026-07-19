@@ -24,6 +24,12 @@ interface Zelle {
   istMonate: Record<string, number>;
   monatswerteRest: Record<string, { eur: number; units?: number | null; kommentar?: string | null }>;
 }
+interface Fremdaenderung {
+  am: string;
+  von: string | null;
+  begruendung: string | null;
+  quittiertAm: string | null;
+}
 interface Matrix {
   periode: string;
   regionCode: string;
@@ -34,6 +40,7 @@ interface Matrix {
   monate: string[];
   restAbMonat: number;
   zellen: Zelle[];
+  fremdaenderung: Fremdaenderung | null;
 }
 
 const monatNr = (p: string) => Number(p.slice(5));
@@ -62,6 +69,7 @@ export default function ForecastMonatlichPage() {
   const [sel, setSel] = useState<{ periode: string; regionCode: string } | null>(null);
   const [edits, setEdits] = useState<Record<string, number>>({}); // key land|e1|periode -> EUR
   const [comments, setComments] = useState<Record<string, string>>({}); // key land|e1|periode -> Begründung
+  const [ueberBegr, setUeberBegr] = useState(''); // Pflicht-Begründung der Leitungs-Überschreibung
 
   const { data: perioden } = useQuery({ queryKey: ['meine'], queryFn: () => api.get<Periode[]>('/forecast/meine') });
   const aktiv = sel ?? (perioden && perioden[0] ? { periode: perioden[0].periode, regionCode: perioden[0].regionCode } : null);
@@ -71,7 +79,13 @@ export default function ForecastMonatlichPage() {
     enabled: !!aktiv,
   });
 
-  const editierbar = !!matrix && matrix.status === 'OFFEN' && user?.rolle === 'AGM';
+  const rolle = user?.rolle;
+  // AGM bearbeitet einen offenen Forecast; die Leitung überschreibt einen bereits fertiggemeldeten.
+  const agmEditierbar = !!matrix && matrix.status === 'OFFEN' && rolle === 'AGM';
+  const leitungUeberschreibt = !!matrix && (rolle === 'VERTRIEBSLEITER' || rolle === 'BU_LEITER') && (matrix.status === 'BESTAETIGT' || matrix.status === 'ANGEPASST');
+  const editierbar = agmEditierbar || leitungUeberschreibt;
+  // Offene Fremdüberschreibung, die der AGM dieser Periode noch zur Kenntnis nehmen muss.
+  const offeneKenntnisnahme = !!matrix?.fremdaenderung && !matrix.fremdaenderung.quittiertAm && rolle === 'AGM';
   const schwelle = matrix?.monatsSchwellwertProzent ?? 5;
   const jj = matrix ? matrix.periode.slice(2, 4) : '';
   const istMonate = useMemo(() => (matrix ? matrix.monate.filter((p) => monatNr(p) < matrix.restAbMonat) : []), [matrix]);
@@ -129,30 +143,50 @@ export default function ForecastMonatlichPage() {
     onSuccess: () => qc.invalidateQueries(),
   });
 
+  // Baut die geänderten Zellen (land|e1) mit ihren Forecast-Monatswerten + Per-Monats-Kommentaren.
+  const baueZellen = () =>
+    matrix!.zellen
+      .filter((z) => editierteZellen.has(`${z.landId}|${z.e1Id}`))
+      .map((z) => {
+        const mw: Record<string, { eur: number; units?: number | null; kommentar?: string | null }> = {};
+        for (const p of fcMonate) {
+          const key = ek(z.landId, z.e1Id, p);
+          const komm = (comments[key] ?? z.monatswerteRest[p]?.kommentar ?? '').trim();
+          mw[p] = { eur: fcEur(z, p), units: z.monatswerteRest[p]?.units ?? null, ...(komm ? { kommentar: komm } : {}) };
+        }
+        return { landId: z.landId, e1Id: z.e1Id, monatswerteRest: mw };
+      });
+
   const anpassen = useMutation({
     mutationFn: () => {
-      const zellen = matrix!.zellen
-        .filter((z) => editierteZellen.has(`${z.landId}|${z.e1Id}`))
-        .map((z) => {
-          const mw: Record<string, { eur: number; units?: number | null; kommentar?: string | null }> = {};
-          for (const p of fcMonate) {
-            const key = ek(z.landId, z.e1Id, p);
-            const komm = (comments[key] ?? z.monatswerteRest[p]?.kommentar ?? '').trim();
-            mw[p] = { eur: fcEur(z, p), units: z.monatswerteRest[p]?.units ?? null, ...(komm ? { kommentar: komm } : {}) };
-          }
-          return { landId: z.landId, e1Id: z.e1Id, monatswerteRest: mw };
-        });
       // Per-Monats-Begründungen liegen in zelle.monatswerteRest[m].kommentar; der Top-Level-Kommentar
       // (für die Zellen-Schwellwert-Prüfung, MaxLength 2000) ist nur eine kurze Zusammenfassung.
       const anzBegr = Object.values(comments).filter((c) => c.trim()).length;
       const kommentar = anzBegr ? `Monatsbegründungen (${anzBegr}) — Details je Monat gespeichert` : undefined;
-      return api.post(`/forecast/${aktiv!.periode}/${aktiv!.regionCode}/anpassen`, { kommentar, monatsModus: true, zellen });
+      return api.post(`/forecast/${aktiv!.periode}/${aktiv!.regionCode}/anpassen`, { kommentar, monatsModus: true, zellen: baueZellen() });
     },
     onSuccess: () => {
       setEdits({});
       setComments({});
       qc.invalidateQueries();
     },
+  });
+
+  // Leitung überschreibt einen fertiggemeldeten Forecast (Pflicht-Begründung, AGM wird informiert).
+  const ueberschreiben = useMutation({
+    mutationFn: () => api.post(`/forecast/${aktiv!.periode}/${aktiv!.regionCode}/ueberschreiben`, { begruendung: ueberBegr.trim(), monatsModus: false, zellen: baueZellen() }),
+    onSuccess: () => {
+      setEdits({});
+      setComments({});
+      setUeberBegr('');
+      qc.invalidateQueries();
+    },
+  });
+
+  // AGM nimmt eine Fremdüberschreibung zur Kenntnis.
+  const quittieren = useMutation({
+    mutationFn: () => api.post(`/forecast/${aktiv!.periode}/${aktiv!.regionCode}/quittieren`),
+    onSuccess: () => qc.invalidateQueries(),
   });
 
   // Sortierung E1 -> Land + Gruppen-Markierung (E1-Label nur in erster Zeile der Gruppe).
@@ -336,6 +370,27 @@ export default function ForecastMonatlichPage() {
             </div>
           </div>
 
+          {/* AGM: offene Fremdüberschreibung durch die Leitung zur Kenntnis nehmen. */}
+          {offeneKenntnisnahme && matrix.fremdaenderung && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-ez-accent/40 bg-ez-accent/5 p-3">
+              <div className="text-sm">
+                <p className="font-semibold text-ez-accent">{t('fremdBannerTitel')}</p>
+                <p className="text-gray-600">
+                  {t('fremdBannerText', { von: matrix.fremdaenderung.von ?? '—', datum: new Date(matrix.fremdaenderung.am).toLocaleString(locale) })}
+                  {matrix.fremdaenderung.begruendung ? ` — „${matrix.fremdaenderung.begruendung}"` : ''}
+                </p>
+              </div>
+              <Button onClick={() => quittieren.mutate()} disabled={quittieren.isPending}>
+                {quittieren.isPending ? t('quittiereBusy') : t('quittieren')}
+              </Button>
+            </div>
+          )}
+
+          {/* Leitung überschreibt einen bereits fertiggemeldeten Forecast. */}
+          {leitungUeberschreibt && (
+            <div className="rounded-lg border border-ez-primary/40 bg-ez-primary/5 p-3 text-sm text-ez-primary">{t('ueberschreibHinweis')}</div>
+          )}
+
           <div className="overflow-x-auto">
             <table className="w-full border-collapse whitespace-nowrap text-xs tabular-nums">
               <thead>
@@ -441,7 +496,7 @@ export default function ForecastMonatlichPage() {
             </table>
           </div>
 
-          {editierbar && editierteZellen.size > 0 && (
+          {agmEditierbar && editierteZellen.size > 0 && (
             <div className="space-y-2 rounded border border-ez-primary/30 bg-ez-primary/5 p-3">
               {fehlendeBegruendungen.length > 0 && (
                 <p className="text-sm font-medium text-ez-ampelRot">{t('begruendungNoetig', { anzahl: fehlendeBegruendungen.length, schwelle })}</p>
@@ -477,6 +532,34 @@ export default function ForecastMonatlichPage() {
                   onClick={() => {
                     setEdits({});
                     setComments({});
+                  }}
+                >
+                  {t('verwerfen')}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {leitungUeberschreibt && editierteZellen.size > 0 && (
+            <div className="space-y-2 rounded border border-ez-primary/30 bg-ez-primary/5 p-3">
+              <p className="text-sm font-medium text-ez-primary">{t('ueberschreibBegrTitel', { anzahl: editierteZellen.size })}</p>
+              <input
+                className={`w-full rounded border px-2 py-1 text-sm focus:outline-none ${ueberBegr.trim().length >= 3 ? 'border-gray-300' : 'border-ez-ampelRot'}`}
+                placeholder={t('ueberschreibBegrPlaceholder')}
+                value={ueberBegr}
+                onChange={(e) => setUeberBegr(e.target.value)}
+              />
+              {ueberschreiben.isError && <p className="text-sm text-ez-accent">{(ueberschreiben.error as Error).message}</p>}
+              <div className="flex gap-2 pt-1">
+                <Button onClick={() => ueberschreiben.mutate()} disabled={ueberschreiben.isPending || ueberBegr.trim().length < 3}>
+                  {ueberschreiben.isPending ? t('speichert') : t('ueberschreibSpeichern', { anzahl: editierteZellen.size })}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setEdits({});
+                    setComments({});
+                    setUeberBegr('');
                   }}
                 >
                   {t('verwerfen')}

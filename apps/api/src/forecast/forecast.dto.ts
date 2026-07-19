@@ -84,6 +84,14 @@ export class ZurueckweisenDto {
   begruendung!: string;
 }
 
+/** Fremdüberschreibung durch die Leitung: Zellen wie beim Anpassen, aber mit Pflicht-Begründung. */
+export class UeberschreibenDto extends AnpassenDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(1000)
+  begruendung!: string;
+}
+
 export class WiederOeffnenDto {
   @IsString()
   @MinLength(3)

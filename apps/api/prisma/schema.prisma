@@ -383,6 +383,11 @@ model ForecastPeriode {
   erinnerungAm     DateTime?
   eskalationAm     DateTime?
   abgeschlossenAm  DateTime?
+  // Fremdüberschreibung durch Vertriebs-/BU-Leitung (Kenntnisnahme durch AGM erforderlich).
+  fremdaenderungAm          DateTime?
+  fremdaenderungVon         String?
+  fremdaenderungBegruendung String?
+  fremdaenderungQuittiertAm DateTime?
   erstelltAm       DateTime       @default(now())
   aktualisiertAm   DateTime       @updatedAt
 
