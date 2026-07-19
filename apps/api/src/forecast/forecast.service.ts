@@ -16,7 +16,7 @@ import { infoMail } from '../mail/mail.templates';
 import { ScopeService } from '../scope/scope.service';
 import { StateMachineService } from '../workflow/state-machine.service';
 import type { RequestUser } from '../common/decorators/current-user.decorator';
-import type { AnpassenDto } from './forecast.dto';
+import type { AnpassenDto, UeberschreibenDto } from './forecast.dto';
 
 type Client = PrismaService | Prisma.TransactionClient;
 
@@ -256,6 +256,69 @@ export class ForecastService {
     await Promise.all(info.empfaenger.map((e) => this.mail.send(e, infoMail('Forecast angepasst', `Region ${regionCode} · ${periode}`, text))));
   }
 
+  /**
+   * F10/F11: Fremdüberschreibung eines bereits fertiggemeldeten Forecasts (BESTAETIGT/ANGEPASST) durch
+   * Vertriebs-/BU-Leitung. Erzeugt eine neue append-only ANGEPASST-Version, markiert die Periode als
+   * fremdüberschrieben (Kenntnisnahme durch AGM nötig) und informiert die AGM der Region. Begründung Pflicht.
+   */
+  async ueberschreiben(periode: string, regionCode: string, aktor: RequestUser, dto: UeberschreibenDto) {
+    const p = await this.ladePeriode(periode, regionCode);
+    const { jahr, monate } = this.restMonate(periode);
+    const budgetCells = await this.budgetRestProCell(jahr, regionCode, monate);
+    const schwelle = await this.schwellwert();
+
+    let irgendVerletzt = false;
+    const adjust = new Map<string, { mw: MonatswerteRest; verletzt: boolean }>();
+    for (const z of dto.zellen) {
+      const key = `${z.landId}|${z.e1Id}`;
+      const neuSumme = summeEur(z.monatswerteRest);
+      const budgetSumme = budgetCells.has(key) ? summeEur(budgetCells.get(key) as MonatswerteRest) : null;
+      const verletzt = istSchwellwertVerletzt(neuSumme, { budget: budgetSumme }, schwelle);
+      if (verletzt) irgendVerletzt = true;
+      adjust.set(key, { mw: z.monatswerteRest, verletzt });
+    }
+
+    // F10 (BESTAETIGT→ANGEPASST) oder F11 (ANGEPASST→ANGEPASST); Rolle VL/BU + Pflicht-Begründung.
+    this.sm.pruefe(FORECAST_TRANSITIONS, p.status, ForecastStatus.ANGEPASST, { rolle: aktor.rolle, aktorId: aktor.id, begruendung: dto.begruendung });
+
+    const jetzt = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await this.neueVersionen(tx, periode, regionCode, ForecastStatus.ANGEPASST, aktor, adjust, dto.begruendung);
+      await tx.forecastPeriode.update({
+        where: { id: p.id },
+        data: { status: ForecastStatus.ANGEPASST, fremdaenderungAm: jetzt, fremdaenderungVon: aktor.email, fremdaenderungBegruendung: dto.begruendung, fremdaenderungQuittiertAm: null },
+      });
+      await this.audit.write(
+        { entitaet: 'ForecastPeriode', entitaetId: p.id, aktion: 'STATUS_WECHSEL', userId: aktor.id, userEmail: aktor.email, vorherWert: { status: p.status }, nachherWert: { status: 'ANGEPASST', fremdueberschrieben: true, anzahlZellen: adjust.size, begruendung: dto.begruendung } },
+        tx,
+      );
+    });
+
+    const agms = await this.aktiveAgms(regionCode);
+    await Promise.all(
+      agms.map((e) =>
+        this.mail.send(e, infoMail('Forecast von der Leitung überschrieben', 'Bitte zur Kenntnis nehmen', `${aktor.email} hat den Forecast für Region ${regionCode}, Periode ${periode} überschrieben (${adjust.size} Zelle(n)). Begründung: ${dto.begruendung}. Bitte im Portal zur Kenntnis nehmen.`)),
+      ),
+    );
+    return { status: ForecastStatus.ANGEPASST, schwellwertVerletzt: irgendVerletzt, gemeldetAn: agms.length };
+  }
+
+  /** AGM nimmt eine Fremdüberschreibung zur Kenntnis (setzt den Quittier-Zeitstempel, informiert die Leitung). */
+  async quittieren(periode: string, regionCode: string, aktor: RequestUser) {
+    const p = await this.ladePeriode(periode, regionCode);
+    await this.assertSchreib(aktor, regionCode);
+    if (!p.fremdaenderungAm || p.fremdaenderungQuittiertAm) {
+      throw new BadRequestException('Keine offene Fremdüberschreibung zur Kenntnisnahme.');
+    }
+    const jetzt = new Date();
+    await this.prisma.forecastPeriode.update({ where: { id: p.id }, data: { fremdaenderungQuittiertAm: jetzt } });
+    await this.audit.write({ entitaet: 'ForecastPeriode', entitaetId: p.id, aktion: 'UPDATE', userId: aktor.id, userEmail: aktor.email, nachherWert: { fremdaenderungQuittiertAm: jetzt } });
+    if (p.fremdaenderungVon) {
+      await this.mail.send(p.fremdaenderungVon, infoMail('Überschreibung zur Kenntnis genommen', 'Bestätigt', `${aktor.email} hat die Forecast-Überschreibung für Region ${regionCode}, Periode ${periode} zur Kenntnis genommen.`));
+    }
+    return { quittiertAm: jetzt };
+  }
+
   /** F3/F4 -> ZURUECKGEWIESEN, dann F5 (SYSTEM) -> OFFEN. */
   async zurueckweisen(periode: string, regionCode: string, aktor: RequestUser, begruendung: string) {
     const p = await this.ladePeriode(periode, regionCode);
@@ -491,6 +554,15 @@ export class ForecastService {
       monatsSchwellwertProzent: monatsSchwelle,
       monate: monateKeys,
       restAbMonat: monat,
+      // Offene Fremdüberschreibung durch die Leitung -> AGM muss zur Kenntnis nehmen.
+      fremdaenderung: periodeInfo.fremdaenderungAm
+        ? {
+            am: periodeInfo.fremdaenderungAm,
+            von: periodeInfo.fremdaenderungVon,
+            begruendung: periodeInfo.fremdaenderungBegruendung,
+            quittiertAm: periodeInfo.fremdaenderungQuittiertAm,
+          }
+        : null,
       zellen,
     };
   }

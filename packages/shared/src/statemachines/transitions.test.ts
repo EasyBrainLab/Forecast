@@ -35,13 +35,18 @@ describe('erlaubteAktionen (Forecast)', () => {
     expect(erlaubteAktionen(FORECAST_TRANSITIONS, ForecastStatus.BESTAETIGT, Rolle.AGM)).toHaveLength(0);
     expect(erlaubteAktionen(FORECAST_TRANSITIONS, ForecastStatus.ABGESCHLOSSEN, Rolle.AGM)).toHaveLength(0);
   });
-  it('BU-Leiter darf abschließen, Vertriebsleiter nur wiedereröffnen', () => {
+  it('Leitung darf fertiggemeldeten Forecast zurücksetzen/überschreiben, BU zusätzlich abschließen', () => {
     const bu = erlaubteAktionen(FORECAST_TRANSITIONS, ForecastStatus.BESTAETIGT, Rolle.BU_LEITER).map((t) => t.id);
-    expect(bu).toEqual(['F6']);
+    expect(bu).toEqual(['F3', 'F6', 'F10']); // zurücksetzen, abschließen, überschreiben
     const vlZu = erlaubteAktionen(FORECAST_TRANSITIONS, ForecastStatus.BESTAETIGT, Rolle.VERTRIEBSLEITER).map((t) => t.id);
-    expect(vlZu).toEqual(['F3']); // VL weist zurück, schließt aber nicht ab
+    expect(vlZu).toEqual(['F3', 'F10']); // VL: zurücksetzen + überschreiben, schließt aber nicht ab
     const vlAuf = erlaubteAktionen(FORECAST_TRANSITIONS, ForecastStatus.ABGESCHLOSSEN, Rolle.VERTRIEBSLEITER).map((t) => t.id);
     expect(vlAuf).toEqual(['F9']);
+  });
+  it('Leitung darf ANGEPASST erneut überschreiben (F11), AGM hat keine Aktion', () => {
+    const bu = erlaubteAktionen(FORECAST_TRANSITIONS, ForecastStatus.ANGEPASST, Rolle.BU_LEITER).map((t) => t.id);
+    expect(bu).toEqual(['F4', 'F7', 'F11']); // zurücksetzen, abschließen, überschreiben
+    expect(erlaubteAktionen(FORECAST_TRANSITIONS, ForecastStatus.ANGEPASST, Rolle.AGM)).toHaveLength(0);
   });
   it('F5 bleibt system-only (leeres Rollen-Array)', () => {
     const f5 = FORECAST_TRANSITIONS.find((t) => t.id === 'F5');

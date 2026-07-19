@@ -11,18 +11,20 @@ export const FORECAST_TRANSITIONS: readonly Transition<ForecastStatus>[] = [
     rollen: [Rolle.AGM],
     kommentarPflicht: 'BEI_SCHWELLWERT',
   },
+  // F3/F4: Fertiggemeldeten Forecast auf OFFEN zurücksetzen (z. B. AGM hat versehentlich fertiggemeldet).
+  // Leitung + Admin, Begründung Pflicht; F5 führt anschließend systemseitig auf OFFEN.
   {
     id: 'F3',
     von: ForecastStatus.BESTAETIGT,
     nach: ForecastStatus.ZURUECKGEWIESEN,
-    rollen: [Rolle.VERTRIEBSLEITER],
+    rollen: [Rolle.VERTRIEBSLEITER, Rolle.BU_LEITER, Rolle.ADMIN],
     begruendungPflicht: true,
   },
   {
     id: 'F4',
     von: ForecastStatus.ANGEPASST,
     nach: ForecastStatus.ZURUECKGEWIESEN,
-    rollen: [Rolle.VERTRIEBSLEITER],
+    rollen: [Rolle.VERTRIEBSLEITER, Rolle.BU_LEITER, Rolle.ADMIN],
     begruendungPflicht: true,
   },
   { id: 'F5', von: ForecastStatus.ZURUECKGEWIESEN, nach: ForecastStatus.OFFEN, rollen: [], system: true },
@@ -54,6 +56,23 @@ export const FORECAST_TRANSITIONS: readonly Transition<ForecastStatus>[] = [
     von: ForecastStatus.ABGESCHLOSSEN,
     nach: ForecastStatus.OFFEN,
     rollen: [Rolle.VERTRIEBSLEITER, Rolle.BU_LEITER, Rolle.ADMIN],
+    begruendungPflicht: true,
+  },
+  // F10/F11: Fremdüberschreibung eines bereits fertiggemeldeten Forecasts durch die Leitung.
+  // Ergebnis ist stets ANGEPASST (F11 als Self-Loop für erneute Überschreibung), Begründung Pflicht;
+  // der AGM wird informiert und muss die Änderung zur Kenntnis nehmen.
+  {
+    id: 'F10',
+    von: ForecastStatus.BESTAETIGT,
+    nach: ForecastStatus.ANGEPASST,
+    rollen: [Rolle.VERTRIEBSLEITER, Rolle.BU_LEITER],
+    begruendungPflicht: true,
+  },
+  {
+    id: 'F11',
+    von: ForecastStatus.ANGEPASST,
+    nach: ForecastStatus.ANGEPASST,
+    rollen: [Rolle.VERTRIEBSLEITER, Rolle.BU_LEITER],
     begruendungPflicht: true,
   },
 ];
