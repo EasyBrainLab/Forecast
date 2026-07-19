@@ -37,6 +37,18 @@ export class ExportController {
     res.send(buf);
   }
 
+  /** Eigene Forecast-Matrix (Land × Produktgruppe) einer Region/Periode als Excel — für AGM zum Archivieren. */
+  @Roles(...ALLE_ROLLEN)
+  @Get('forecast-matrix')
+  async forecastMatrix(@Query('periode') periode: string, @Query('regionCode') regionCode: string, @CurrentUser() aktor: RequestUser, @Res() res: Response): Promise<void> {
+    const buf = await this.service.forecastMatrixXlsx(periode, regionCode, aktor);
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="forecast-${regionCode}-${periode}.xlsx"`,
+    });
+    res.send(buf);
+  }
+
   @Roles('BU_LEITER')
   @Post('word-report')
   async wordReport(@Query('jahr') jahr: string, @CurrentUser() aktor: RequestUser, @Res() res: Response): Promise<void> {
