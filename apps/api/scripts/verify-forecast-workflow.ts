@@ -60,19 +60,24 @@ async function main(): Promise<void> {
   check('F1 OFFEN→BESTAETIGT', (await svc.bestaetigen(periode, region, agm)).status === 'BESTAETIGT');
   check('F3+F5 BESTAETIGT→ZURUECKGEWIESEN→OFFEN', (await svc.zurueckweisen(periode, region, vl, 'Annahmen prüfen')).status === 'OFFEN');
 
-  // Schwellwert-Anpassung
+  // Neuer Flow: Speichern (anpassen) ist ein Entwurf und hält die Periode OFFEN; eingereicht wird erst
+  // über bestaetigen(). Werte über dem Monats-Schwellwert brauchen eine Monatsbegründung.
   const ver = await prisma.forecastVersion.findFirstOrThrow({ where: { periode, regionCode: region }, orderBy: { version: 'desc' } });
   const mw = ver.monatswerteRest as Record<string, { eur: number; units?: number | null }>;
   const breach = Object.fromEntries(Object.entries(mw).map(([k, v]) => [k, { eur: (v.eur || 1000) * 2 + 5000, units: v.units }]));
   const zelle = { landId: ver.landId, e1Id: ver.e1Id, monatswerteRest: breach };
-  await expectStatus('F2 Anpassen >Schwellwert OHNE Kommentar → 422', 422, () => svc.anpassen(periode, region, agm, { zellen: [zelle] }));
-  const r3 = await svc.anpassen(periode, region, agm, { kommentar: 'Großauftrag Q3', zellen: [zelle] });
-  check('F2 OFFEN→ANGEPASST mit Pflichtkommentar', r3.status === 'ANGEPASST' && r3.schwellwertVerletzt === true);
-
-  await expectStatus('Bestätigen aus ANGEPASST → 409 (kein Übergang)', 409, () => svc.bestaetigen(periode, region, agm));
+  const zelleBegr = { landId: ver.landId, e1Id: ver.e1Id, monatswerteRest: Object.fromEntries(Object.entries(breach).map(([k, v]) => [k, { ...v, kommentar: 'Großauftrag Q3' }])) };
+  await expectStatus('Speichern >Schwellwert ohne Monatsbegründung → 400', 400, () => svc.anpassen(periode, region, agm, { monatsModus: true, zellen: [zelle] }));
+  check('Speichern (Entwurf) hält Periode OFFEN', (await svc.anpassen(periode, region, agm, { monatsModus: true, zellen: [zelleBegr] })).status === 'OFFEN');
+  const pDraft = await prisma.forecastPeriode.findUniqueOrThrow({ where: { periode_regionCode: { periode, regionCode: region } } });
+  check('Periode nach Speichern weiterhin OFFEN (editierbar)', pDraft.status === 'OFFEN');
+  check('Mehrfaches Speichern möglich', (await svc.anpassen(periode, region, agm, { monatsModus: true, zellen: [zelleBegr] })).status === 'OFFEN');
+  const eingereicht = await svc.bestaetigen(periode, region, agm);
+  check('Final bestätigen nach Anpassung → ANGEPASST', eingereicht.status === 'ANGEPASST' && eingereicht.angepasst === true);
+  await expectStatus('Speichern nach Einreichen → 409 (nicht mehr offen)', 409, () => svc.anpassen(periode, region, agm, { monatsModus: true, zellen: [zelleBegr] }));
   await expectStatus('Abschließen als AGM → 403', 403, () => svc.abschliessen(periode, region, agm));
   check('F7 ANGEPASST→ABGESCHLOSSEN (SYSTEM)', (await svc.abschliessen(periode, region, system, { system: true })).status === 'ABGESCHLOSSEN');
-  await expectStatus('Bestätigen nach ABGESCHLOSSEN → 409 (kein Übergang)', 409, () => svc.bestaetigen(periode, region, agm));
+  await expectStatus('Speichern nach ABGESCHLOSSEN → 409', 409, () => svc.anpassen(periode, region, agm, { monatsModus: true, zellen: [zelleBegr] }));
 
   // F9 — Wiedereröffnung (Rollen + Pflicht-Begründung)
   await expectStatus('Wiedereröffnen als AGM → 403', 403, () => svc.wiederOeffnen(periode, region, agm, 'Korrektur'));
@@ -80,20 +85,20 @@ async function main(): Promise<void> {
   const wo = await svc.wiederOeffnen(periode, region, vl, 'Nachmeldung Ist-Umsatz');
   const pWo = await prisma.forecastPeriode.findUniqueOrThrow({ where: { periode_regionCode: { periode, regionCode: region } } });
   check('F9 ABGESCHLOSSEN→OFFEN (VL, mit Begründung)', wo.status === 'OFFEN' && pWo.status === 'OFFEN' && pWo.abgeschlossenAm === null);
-  check('AGM kann nach Wiedereröffnung wieder bestätigen', (await svc.bestaetigen(periode, region, agm)).status === 'BESTAETIGT');
+  check('AGM bestätigt nach Wiedereröffnung → ANGEPASST (Werte weiterhin angepasst)', (await svc.bestaetigen(periode, region, agm)).status === 'ANGEPASST');
 
   // Prozess 1: Zurücksetzen eines fertiggemeldeten Forecasts auf OFFEN durch die Leitung (BU-Leiter).
   await expectStatus('Zurücksetzen ohne Begründung → 422', 422, () => svc.zurueckweisen(periode, region, bu, '   '));
-  check('Zurücksetzen BESTAETIGT→OFFEN (BU-Leiter)', (await svc.zurueckweisen(periode, region, bu, 'AGM meldete versehentlich fertig')).status === 'OFFEN');
-  check('AGM bestätigt erneut', (await svc.bestaetigen(periode, region, agm)).status === 'BESTAETIGT');
+  check('Zurücksetzen ANGEPASST→OFFEN (BU-Leiter)', (await svc.zurueckweisen(periode, region, bu, 'AGM meldete versehentlich fertig')).status === 'OFFEN');
+  check('AGM bestätigt erneut → ANGEPASST', (await svc.bestaetigen(periode, region, agm)).status === 'ANGEPASST');
 
   // Prozess 2: Fremdüberschreibung durch die Leitung (F10/F11) + Kenntnisnahme durch AGM.
   await expectStatus('Überschreiben ohne Begründung → 422', 422, () => svc.ueberschreiben(periode, region, vl, { zellen: [zelle], begruendung: '' }));
   await expectStatus('AGM darf nicht überschreiben → 403', 403, () => svc.ueberschreiben(periode, region, agm, { zellen: [zelle], begruendung: 'x' }));
   const ueb = await svc.ueberschreiben(periode, region, vl, { zellen: [zelle], begruendung: 'Managementkorrektur Q3' });
   const pUeb = await prisma.forecastPeriode.findUniqueOrThrow({ where: { periode_regionCode: { periode, regionCode: region } } });
-  check('F10 BESTAETIGT→ANGEPASST (VL überschreibt)', ueb.status === 'ANGEPASST' && pUeb.fremdaenderungAm !== null && pUeb.fremdaenderungVon === vl.email && pUeb.fremdaenderungQuittiertAm === null);
-  check('F11 ANGEPASST→ANGEPASST (BU überschreibt erneut)', (await svc.ueberschreiben(periode, region, bu, { zellen: [zelle], begruendung: 'Nachkorrektur' })).status === 'ANGEPASST');
+  check('Leitung überschreibt fertiggemeldeten Forecast (→ANGEPASST, fremdmarkiert)', ueb.status === 'ANGEPASST' && pUeb.fremdaenderungAm !== null && pUeb.fremdaenderungVon === vl.email && pUeb.fremdaenderungQuittiertAm === null);
+  check('Leitung überschreibt erneut (F11 ANGEPASST→ANGEPASST)', (await svc.ueberschreiben(periode, region, bu, { zellen: [zelle], begruendung: 'Nachkorrektur' })).status === 'ANGEPASST');
   await svc.quittieren(periode, region, agm);
   const pQ = await prisma.forecastPeriode.findUniqueOrThrow({ where: { periode_regionCode: { periode, regionCode: region } } });
   check('AGM nimmt Fremdüberschreibung zur Kenntnis', pQ.fremdaenderungQuittiertAm !== null);

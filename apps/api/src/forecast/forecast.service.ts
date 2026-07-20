@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ForecastStatus, Prisma } from '@prisma/client';
 import {
@@ -158,23 +158,78 @@ export class ForecastService {
     }
   }
 
-  /** F1: OFFEN -> BESTAETIGT (AGM, Ein-Klick). */
+  /**
+   * F1/F2: Finales Einreichen des Forecasts (AGM). Der AGM kann vorher beliebig oft speichern (anpassen);
+   * erst hier wird eingereicht. Wurde gegenüber dem Budget angepasst -> ANGEPASST (mit Pflichtkommentar-
+   * Prüfung + Meldung an Controlling/BU), sonst unverändert -> BESTAETIGT. Danach ist keine Bearbeitung mehr
+   * möglich (Periode nicht mehr OFFEN).
+   */
   async bestaetigen(periode: string, regionCode: string, aktor: RequestUser) {
     const p = await this.ladePeriode(periode, regionCode);
     await this.assertSchreib(aktor, regionCode);
-    this.sm.pruefe(FORECAST_TRANSITIONS, p.status, ForecastStatus.BESTAETIGT, { rolle: aktor.rolle, aktorId: aktor.id });
+    const { jahr, monate } = this.restMonate(periode);
+    const [latest, budgetCells] = await Promise.all([this.latestVersionen(this.prisma, periode, regionCode), this.budgetRestProCell(jahr, regionCode, monate)]);
+    const schwelle = await this.schwellwert();
+    const monatsSchwelle = await this.monatsSchwellwert();
+
+    // Aus dem gespeicherten Entwurf ableiten: wurde angepasst, ist ein Schwellwert verletzt, fehlt eine Begründung?
+    let anzahlAngepasst = 0;
+    let irgendVerletzt = false;
+    const fehlendeMonatsKommentare: string[] = [];
+    for (const v of latest) {
+      const key = `${v.landId}|${v.e1Id}`;
+      const mw = v.monatswerteRest as unknown as MonatswerteRest;
+      const versionSumme = summeEur(mw);
+      const budgetSumme = budgetCells.has(key) ? summeEur(budgetCells.get(key) as MonatswerteRest) : null;
+      if (budgetSumme === null || Math.abs(versionSumme - budgetSumme) > 0.005) anzahlAngepasst++;
+      if (istSchwellwertVerletzt(versionSumme, { budget: budgetSumme }, schwelle)) irgendVerletzt = true;
+      const budgetMw = budgetCells.get(key);
+      for (const [m, w] of Object.entries(mw)) {
+        const budgetMonat = budgetMw?.[m]?.eur ?? 0;
+        if (braucheKommentarGegen(w.eur ?? 0, budgetMonat, monatsSchwelle) && !w.kommentar?.trim()) {
+          fehlendeMonatsKommentare.push(`${v.e1Id}/${v.landId} ${m}`);
+        }
+      }
+    }
+    const angepasst = anzahlAngepasst > 0;
+    const zielStatus = angepasst ? ForecastStatus.ANGEPASST : ForecastStatus.BESTAETIGT;
+
+    if (angepasst && fehlendeMonatsKommentare.length > 0) {
+      throw new BadRequestException(`Pflichtkommentar fehlt für Monate mit Abweichung > ${monatsSchwelle} %: ${fehlendeMonatsKommentare.join(', ')}`);
+    }
+    // Die Per-Monats-Begründungen sind im Entwurf hinterlegt; dieser Top-Level-Kommentar erfüllt die
+    // aggregierte Schwellwert-Pflicht der State-Machine (F2).
+    const kommentar = angepasst ? 'Forecast angepasst — Monatsbegründungen im Entwurf hinterlegt' : undefined;
+    this.sm.pruefe(FORECAST_TRANSITIONS, p.status, zielStatus, { rolle: aktor.rolle, aktorId: aktor.id, kommentarErforderlich: irgendVerletzt, kommentar });
+
+    const meldeEmpfaenger = angepasst ? await this.anpassungsMeldeEmpfaenger() : [];
     await this.prisma.$transaction(async (tx) => {
-      await this.neueVersionen(tx, periode, regionCode, ForecastStatus.BESTAETIGT, aktor);
-      await tx.forecastPeriode.update({ where: { id: p.id }, data: { status: ForecastStatus.BESTAETIGT } });
-      await this.audit.write({ entitaet: 'ForecastPeriode', entitaetId: p.id, aktion: 'STATUS_WECHSEL', userId: aktor.id, userEmail: aktor.email, nachherWert: { status: 'BESTAETIGT' } }, tx);
+      await this.neueVersionen(tx, periode, regionCode, zielStatus, aktor);
+      await tx.forecastPeriode.update({ where: { id: p.id }, data: { status: zielStatus } });
+      await this.audit.write(
+        { entitaet: 'ForecastPeriode', entitaetId: p.id, aktion: 'STATUS_WECHSEL', userId: aktor.id, userEmail: aktor.email, nachherWert: { status: zielStatus, angepasst, schwellwertVerletzt: irgendVerletzt, ...(angepasst ? { anzahlAngepasst, gemeldetAn: meldeEmpfaenger } : {}) } },
+        tx,
+      );
     });
-    return { status: ForecastStatus.BESTAETIGT };
+
+    if (angepasst) {
+      // Meldung an Controlling + BU-Leitung nach Commit; Mail-Fehler brechen das Einreichen nicht ab.
+      await this.meldeForecastAnpassung(periode, regionCode, aktor, { anzahlZellen: anzahlAngepasst, schwellwertVerletzt: irgendVerletzt, kommentar: null, empfaenger: meldeEmpfaenger });
+    }
+    return { status: zielStatus, angepasst, schwellwertVerletzt: irgendVerletzt, gemeldetAn: meldeEmpfaenger.length };
   }
 
-  /** F2: OFFEN -> ANGEPASST (AGM, Pflichtkommentar bei Schwellwert). */
+  /**
+   * Speichert Zellen-Anpassungen als Entwurf — die Periode bleibt OFFEN, damit der AGM weiter bearbeiten
+   * kann. Eingereicht (BESTAETIGT/ANGEPASST) wird erst über bestaetigen(). Der Per-Monats-Pflichtkommentar
+   * bei Schwellwert-Überschreitung wird bereits hier erzwungen, damit die Begründung nicht verloren geht.
+   */
   async anpassen(periode: string, regionCode: string, aktor: RequestUser, dto: AnpassenDto) {
     const p = await this.ladePeriode(periode, regionCode);
     await this.assertSchreib(aktor, regionCode);
+    if (p.status !== ForecastStatus.OFFEN) {
+      throw new ConflictException('Forecast ist nicht (mehr) offen — Bearbeitung nicht möglich.');
+    }
     const { jahr, monate } = this.restMonate(periode);
     const budgetCells = await this.budgetRestProCell(jahr, regionCode, monate);
     const schwelle = await this.schwellwert();
@@ -210,28 +265,13 @@ export class ForecastService {
       adjust.set(key, { mw: z.monatswerteRest, verletzt });
     }
 
-    this.sm.pruefe(FORECAST_TRANSITIONS, p.status, ForecastStatus.ANGEPASST, {
-      rolle: aktor.rolle,
-      aktorId: aktor.id,
-      kommentarErforderlich: irgendVerletzt,
-      kommentar: dto.kommentar,
-    });
-
-    // Empfänger der Anpassungs-Meldung (Controlling + BU-Leitung) vorab ermitteln — so wird im Audit
-    // nachweisbar protokolliert, an wen gemeldet wurde (der Versand selbst folgt nach dem Commit).
-    const meldeEmpfaenger = await this.anpassungsMeldeEmpfaenger();
-
+    // Entwurf speichern: neue append-only Version mit Status OFFEN; die Periode bleibt OFFEN (kein Einreichen).
     await this.prisma.$transaction(async (tx) => {
-      await this.neueVersionen(tx, periode, regionCode, ForecastStatus.ANGEPASST, aktor, adjust, dto.kommentar);
-      await tx.forecastPeriode.update({ where: { id: p.id }, data: { status: ForecastStatus.ANGEPASST } });
-      await this.audit.write({ entitaet: 'ForecastPeriode', entitaetId: p.id, aktion: 'STATUS_WECHSEL', userId: aktor.id, userEmail: aktor.email, nachherWert: { status: 'ANGEPASST', schwellwertVerletzt: irgendVerletzt }, metadaten: { anzahlZellen: adjust.size, gemeldetAn: meldeEmpfaenger } }, tx);
+      await this.neueVersionen(tx, periode, regionCode, ForecastStatus.OFFEN, aktor, adjust, dto.kommentar);
+      await this.audit.write({ entitaet: 'ForecastPeriode', entitaetId: p.id, aktion: 'UPDATE', userId: aktor.id, userEmail: aktor.email, nachherWert: { status: 'OFFEN', entwurfGespeichert: true, anzahlZellen: adjust.size, schwellwertVerletzt: irgendVerletzt } }, tx);
     });
 
-    // Meldung an Controlling + BU-Leitung nach erfolgreichem Commit. Mail-Fehler brechen die Anpassung
-    // nicht ab (MailService protokolliert sie als MAIL_FEHLER).
-    await this.meldeForecastAnpassung(periode, regionCode, aktor, { anzahlZellen: adjust.size, schwellwertVerletzt: irgendVerletzt, kommentar: dto.kommentar ?? null, empfaenger: meldeEmpfaenger });
-
-    return { status: ForecastStatus.ANGEPASST, schwellwertVerletzt: irgendVerletzt, gemeldetAn: meldeEmpfaenger.length };
+    return { status: ForecastStatus.OFFEN, gespeichert: adjust.size, schwellwertVerletzt: irgendVerletzt };
   }
 
   /** Empfänger der Forecast-Anpassungsmeldung: verifizierte BU-Leitung + konfiguriertes Controlling (Einstellung CONTROLLING_EMAILS). */
