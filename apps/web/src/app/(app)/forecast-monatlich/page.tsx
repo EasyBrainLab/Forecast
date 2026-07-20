@@ -384,9 +384,13 @@ export default function ForecastMonatlichPage() {
                 {exportFehler && <span className="mt-1 text-xs text-ez-accent">✗ {exportFehler}</span>}
               </div>
               {matrix.status === 'OFFEN' && user?.rolle === 'AGM' && Object.keys(edits).length === 0 && (
-                <Button onClick={() => bestaetigen.mutate()} disabled={bestaetigen.isPending}>
-                  {bestaetigen.isPending ? t('bestaetigt') : t('bestaetigen')}
-                </Button>
+                <div className="flex flex-col items-start">
+                  <Button onClick={() => bestaetigen.mutate()} disabled={bestaetigen.isPending}>
+                    {bestaetigen.isPending ? t('bestaetigt') : t('bestaetigen')}
+                  </Button>
+                  {anpassen.isSuccess && <span className="mt-1 max-w-[220px] text-xs text-ez-ampelGruen">{t('gespeichert')}</span>}
+                  {bestaetigen.isError && <span className="mt-1 max-w-[220px] text-xs text-ez-accent">✗ {(bestaetigen.error as Error).message}</span>}
+                </div>
               )}
               <PeriodenAktionen periode={matrix.periode} regionCode={matrix.regionCode} status={matrix.status} />
             </div>
@@ -545,6 +549,7 @@ export default function ForecastMonatlichPage() {
                   }),
                 )}
               {anpassen.isError && <p className="text-sm text-ez-accent">{(anpassen.error as Error).message}</p>}
+              <p className="text-xs text-gray-500">{t('speichernHinweis')}</p>
               <div className="flex gap-2 pt-1">
                 <Button onClick={() => anpassen.mutate()} disabled={anpassen.isPending || fehlendeBegruendungen.length > 0}>
                   {anpassen.isPending ? t('speichert') : t('speichern', { anzahl: editierteZellen.size })}
