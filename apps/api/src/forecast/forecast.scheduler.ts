@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ForecastStatus } from '@prisma/client';
-import { EINSTELLUNG_KEYS } from '@forecast/shared';
+import { EINSTELLUNG_KEYS, formatPeriode } from '@forecast/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { infoMail } from '../mail/mail.templates';
@@ -76,5 +76,36 @@ export class ForecastScheduler {
         this.logger.warn(`Abschluss ${p.periode}/${p.regionCode} fehlgeschlagen: ${(e as Error).message}`);
       }
     }
+  }
+
+  /**
+   * Monatlich 03:00 am 1. (nach dem Abschluss um 02:00) — die Periode des laufenden Monats für alle
+   * forecast-relevanten Regionen öffnen. So schreitet die aktive Periode monatlich fort und der zuletzt
+   * abgeschlossene Vormonat wird zum Actual (sein Ist erscheint in der Monatssicht). Idempotent, da
+   * oeffnePeriode je Region/Periode nur einmal seedet.
+   */
+  @Cron('0 3 1 * *', { timeZone: 'Europe/Berlin' })
+  async neuePeriodeOeffnen(): Promise<void> {
+    const jetzt = new Date();
+    await this.oeffneAktuellePeriode(formatPeriode(jetzt.getFullYear(), jetzt.getMonth() + 1));
+  }
+
+  /** Öffnet die angegebene Periode für alle forecast-relevanten Regionen (idempotent). */
+  async oeffneAktuellePeriode(periode: string): Promise<{ periode: string; geoeffnet: number }> {
+    const sys = await this.prisma.user.findFirst({ where: { rolle: 'ADMIN' }, select: { id: true, email: true } });
+    if (!sys) return { periode, geoeffnet: 0 };
+    const system = { id: sys.id, email: 'SYSTEM', rolle: 'ADMIN' as const };
+    const regionen = await this.prisma.region.findMany({ where: { forecastRelevant: true }, select: { code: true } });
+    let ok = 0;
+    for (const r of regionen) {
+      try {
+        await this.forecast.oeffnePeriode(periode, r.code, system);
+        ok++;
+      } catch (e) {
+        this.logger.warn(`Öffnen ${periode}/${r.code} fehlgeschlagen: ${(e as Error).message}`);
+      }
+    }
+    this.logger.log(`Periode ${periode} geöffnet für ${ok}/${regionen.length} Region(en).`);
+    return { periode, geoeffnet: ok };
   }
 }
