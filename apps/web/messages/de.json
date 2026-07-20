@@ -199,6 +199,7 @@
     "fremdBannerText": "Am {datum} durch {von}. Bitte zur Kenntnis nehmen.",
     "quittieren": "Zur Kenntnis genommen",
     "quittiereBusy": "Speichere…",
+    "leitungOffenHinweis": "Als Leitung bearbeitest du einen offenen Forecast der Region. Speichere deine Änderungen — der zuständige AGM reicht den Forecast final ein.",
     "ueberschreibHinweis": "Du bearbeitest einen bereits fertiggemeldeten Forecast. Deine Änderungen überschreiben die AGM-Meldung; der AGM wird informiert und muss sie zur Kenntnis nehmen.",
     "ueberschreibBegrTitel": "{anzahl} Zelle(n) überschreiben — Begründung (Pflicht)",
     "ueberschreibBegrPlaceholder": "Grund der Überschreibung…",
