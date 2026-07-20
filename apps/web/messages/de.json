@@ -159,7 +159,7 @@
   },
   "forecastMonat": {
     "titel": "Forecast — Monatssicht (Produktgruppe / Land)",
-    "beschreibung": "Abgeschlossene Monate = <b>Actual</b> (realisierte Umsätze), offene Monate = <b>Forecast</b> (aus Budget vorbelegt, überschreibbar). Werte in <b>kEUR</b> (Tausend EUR). Bei Monatsabweichung > {schwelle} % gegenüber Budget ist eine Begründung Pflicht.",
+    "beschreibung": "Abgeschlossene Monate = <b>Actual</b> (realisierte Umsätze), offene Monate = <b>Forecast</b> (aus Budget vorbelegt, überschreibbar). Werte in <b>kEUR</b> (Tausend EUR). Geänderte Felder werden farblich markiert (blau = angepasst, rot = Abweichung > {schwelle} %). Eine Begründung ist nicht nötig — beim Bestätigen kann optional eine kurze Stellungnahme hinterlegt werden.",
     "keinePeriode": "Es ist noch keine Forecast-Periode geöffnet.",
     "monatsSchwellwert": "Monats-Schwellwert {schwelle} %",
     "bestaetigen": "Forecast bestätigen",
@@ -179,6 +179,8 @@
     "exportErzeuge": "Erzeuge…",
     "gespeichert": "Gespeichert ✓ — du kannst weiter bearbeiten oder unten final bestätigen.",
     "speichernHinweis": "Zwischenstand speichern — der Forecast wird erst mit „Forecast bestätigen\" final eingereicht.",
+    "stellungnahmeLabel": "Kurze Stellungnahme zur Fertigmeldung (optional)",
+    "stellungnahmePlaceholder": "Freiwillige Anmerkung zu den Anpassungen — kann leer bleiben…",
     "handlungsbedarf": "Dein Handlungsbedarf",
     "keinHandlungsbedarf": "Alles erledigt — nichts offen.",
     "chipOffen": "{n} offen — zu bearbeiten",

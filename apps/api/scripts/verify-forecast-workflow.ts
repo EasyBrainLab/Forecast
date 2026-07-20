@@ -66,18 +66,18 @@ async function main(): Promise<void> {
   const mw = ver.monatswerteRest as Record<string, { eur: number; units?: number | null }>;
   const breach = Object.fromEntries(Object.entries(mw).map(([k, v]) => [k, { eur: (v.eur || 1000) * 2 + 5000, units: v.units }]));
   const zelle = { landId: ver.landId, e1Id: ver.e1Id, monatswerteRest: breach };
-  const zelleBegr = { landId: ver.landId, e1Id: ver.e1Id, monatswerteRest: Object.fromEntries(Object.entries(breach).map(([k, v]) => [k, { ...v, kommentar: 'Großauftrag Q3' }])) };
-  await expectStatus('Speichern >Schwellwert ohne Monatsbegründung → 400', 400, () => svc.anpassen(periode, region, agm, { monatsModus: true, zellen: [zelle] }));
-  check('Speichern (Entwurf) hält Periode OFFEN', (await svc.anpassen(periode, region, agm, { monatsModus: true, zellen: [zelleBegr] })).status === 'OFFEN');
+  check('Speichern >Schwellwert ohne Begründung möglich (keine Pflicht mehr)', (await svc.anpassen(periode, region, agm, { monatsModus: true, zellen: [zelle] })).status === 'OFFEN');
   const pDraft = await prisma.forecastPeriode.findUniqueOrThrow({ where: { periode_regionCode: { periode, regionCode: region } } });
   check('Periode nach Speichern weiterhin OFFEN (editierbar)', pDraft.status === 'OFFEN');
-  check('Mehrfaches Speichern möglich', (await svc.anpassen(periode, region, agm, { monatsModus: true, zellen: [zelleBegr] })).status === 'OFFEN');
-  const eingereicht = await svc.bestaetigen(periode, region, agm);
+  check('Mehrfaches Speichern möglich', (await svc.anpassen(periode, region, agm, { monatsModus: true, zellen: [zelle] })).status === 'OFFEN');
+  const eingereicht = await svc.bestaetigen(periode, region, agm, 'Optionale Stellungnahme zum Q3-Forecast');
   check('Final bestätigen nach Anpassung → ANGEPASST', eingereicht.status === 'ANGEPASST' && eingereicht.angepasst === true);
-  await expectStatus('Speichern nach Einreichen → 409 (nicht mehr offen)', 409, () => svc.anpassen(periode, region, agm, { monatsModus: true, zellen: [zelleBegr] }));
+  const finalVer = await prisma.forecastVersion.findFirstOrThrow({ where: { periode, regionCode: region }, orderBy: { version: 'desc' } });
+  check('Optionale Stellungnahme in finaler Version gespeichert', finalVer.kommentar === 'Optionale Stellungnahme zum Q3-Forecast');
+  await expectStatus('Speichern nach Einreichen → 409 (nicht mehr offen)', 409, () => svc.anpassen(periode, region, agm, { monatsModus: true, zellen: [zelle] }));
   await expectStatus('Abschließen als AGM → 403', 403, () => svc.abschliessen(periode, region, agm));
   check('F7 ANGEPASST→ABGESCHLOSSEN (SYSTEM)', (await svc.abschliessen(periode, region, system, { system: true })).status === 'ABGESCHLOSSEN');
-  await expectStatus('Speichern nach ABGESCHLOSSEN → 409', 409, () => svc.anpassen(periode, region, agm, { monatsModus: true, zellen: [zelleBegr] }));
+  await expectStatus('Speichern nach ABGESCHLOSSEN → 409', 409, () => svc.anpassen(periode, region, agm, { monatsModus: true, zellen: [zelle] }));
 
   // F9 — Wiedereröffnung (Rollen + Pflicht-Begründung)
   await expectStatus('Wiedereröffnen als AGM → 403', 403, () => svc.wiederOeffnen(periode, region, agm, 'Korrektur'));

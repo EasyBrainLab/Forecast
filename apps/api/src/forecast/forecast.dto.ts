@@ -77,6 +77,14 @@ export class AnpassenDto {
   zellen!: ZelleDto[];
 }
 
+/** Finales Bestätigen: optionale kurze Stellungnahme des AGM (keine Pflicht). */
+export class BestaetigenDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(KOMMENTAR_MAX)
+  stellungnahme?: string;
+}
+
 export class ZurueckweisenDto {
   @IsString()
   @MinLength(3)

@@ -2,7 +2,6 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { ConfigService } from '@nestjs/config';
 import { ForecastStatus, Prisma } from '@prisma/client';
 import {
-  braucheKommentarGegen,
   EINSTELLUNG_KEYS,
   FORECAST_TRANSITIONS,
   formatPeriode,
@@ -16,6 +15,7 @@ import { infoMail } from '../mail/mail.templates';
 import { ScopeService } from '../scope/scope.service';
 import { StateMachineService } from '../workflow/state-machine.service';
 import type { RequestUser } from '../common/decorators/current-user.decorator';
+import { KOMMENTAR_MAX } from './forecast.dto';
 import type { AnpassenDto, UeberschreibenDto } from './forecast.dto';
 
 type Client = PrismaService | Prisma.TransactionClient;
@@ -164,57 +164,42 @@ export class ForecastService {
    * Prüfung + Meldung an Controlling/BU), sonst unverändert -> BESTAETIGT. Danach ist keine Bearbeitung mehr
    * möglich (Periode nicht mehr OFFEN).
    */
-  async bestaetigen(periode: string, regionCode: string, aktor: RequestUser) {
+  async bestaetigen(periode: string, regionCode: string, aktor: RequestUser, stellungnahme?: string) {
     const p = await this.ladePeriode(periode, regionCode);
     await this.assertSchreib(aktor, regionCode);
     const { jahr, monate } = this.restMonate(periode);
     const [latest, budgetCells] = await Promise.all([this.latestVersionen(this.prisma, periode, regionCode), this.budgetRestProCell(jahr, regionCode, monate)]);
     const schwelle = await this.schwellwert();
-    const monatsSchwelle = await this.monatsSchwellwert();
 
-    // Aus dem gespeicherten Entwurf ableiten: wurde angepasst, ist ein Schwellwert verletzt, fehlt eine Begründung?
+    // Aus dem gespeicherten Entwurf ableiten: wurde gegenüber Budget angepasst (und ist ein Schwellwert verletzt)?
     let anzahlAngepasst = 0;
     let irgendVerletzt = false;
-    const fehlendeMonatsKommentare: string[] = [];
     for (const v of latest) {
       const key = `${v.landId}|${v.e1Id}`;
-      const mw = v.monatswerteRest as unknown as MonatswerteRest;
-      const versionSumme = summeEur(mw);
+      const versionSumme = summeEur(v.monatswerteRest as unknown as MonatswerteRest);
       const budgetSumme = budgetCells.has(key) ? summeEur(budgetCells.get(key) as MonatswerteRest) : null;
       if (budgetSumme === null || Math.abs(versionSumme - budgetSumme) > 0.005) anzahlAngepasst++;
       if (istSchwellwertVerletzt(versionSumme, { budget: budgetSumme }, schwelle)) irgendVerletzt = true;
-      const budgetMw = budgetCells.get(key);
-      for (const [m, w] of Object.entries(mw)) {
-        const budgetMonat = budgetMw?.[m]?.eur ?? 0;
-        if (braucheKommentarGegen(w.eur ?? 0, budgetMonat, monatsSchwelle) && !w.kommentar?.trim()) {
-          fehlendeMonatsKommentare.push(`${v.e1Id}/${v.landId} ${m}`);
-        }
-      }
     }
     const angepasst = anzahlAngepasst > 0;
     const zielStatus = angepasst ? ForecastStatus.ANGEPASST : ForecastStatus.BESTAETIGT;
+    const kommentar = stellungnahme?.trim() ? stellungnahme.trim().slice(0, KOMMENTAR_MAX) : null; // optionale Stellungnahme
 
-    if (angepasst && fehlendeMonatsKommentare.length > 0) {
-      throw new BadRequestException(`Pflichtkommentar fehlt für Monate mit Abweichung > ${monatsSchwelle} %: ${fehlendeMonatsKommentare.join(', ')}`);
-    }
-    // Die Per-Monats-Begründungen sind im Entwurf hinterlegt; dieser Top-Level-Kommentar erfüllt die
-    // aggregierte Schwellwert-Pflicht der State-Machine (F2).
-    const kommentar = angepasst ? 'Forecast angepasst — Monatsbegründungen im Entwurf hinterlegt' : undefined;
-    this.sm.pruefe(FORECAST_TRANSITIONS, p.status, zielStatus, { rolle: aktor.rolle, aktorId: aktor.id, kommentarErforderlich: irgendVerletzt, kommentar });
+    this.sm.pruefe(FORECAST_TRANSITIONS, p.status, zielStatus, { rolle: aktor.rolle, aktorId: aktor.id });
 
     const meldeEmpfaenger = angepasst ? await this.anpassungsMeldeEmpfaenger() : [];
     await this.prisma.$transaction(async (tx) => {
-      await this.neueVersionen(tx, periode, regionCode, zielStatus, aktor);
+      await this.neueVersionen(tx, periode, regionCode, zielStatus, aktor, undefined, kommentar);
       await tx.forecastPeriode.update({ where: { id: p.id }, data: { status: zielStatus } });
       await this.audit.write(
-        { entitaet: 'ForecastPeriode', entitaetId: p.id, aktion: 'STATUS_WECHSEL', userId: aktor.id, userEmail: aktor.email, nachherWert: { status: zielStatus, angepasst, schwellwertVerletzt: irgendVerletzt, ...(angepasst ? { anzahlAngepasst, gemeldetAn: meldeEmpfaenger } : {}) } },
+        { entitaet: 'ForecastPeriode', entitaetId: p.id, aktion: 'STATUS_WECHSEL', userId: aktor.id, userEmail: aktor.email, nachherWert: { status: zielStatus, angepasst, schwellwertVerletzt: irgendVerletzt, ...(kommentar ? { stellungnahme: kommentar } : {}), ...(angepasst ? { anzahlAngepasst, gemeldetAn: meldeEmpfaenger } : {}) } },
         tx,
       );
     });
 
     if (angepasst) {
       // Meldung an Controlling + BU-Leitung nach Commit; Mail-Fehler brechen das Einreichen nicht ab.
-      await this.meldeForecastAnpassung(periode, regionCode, aktor, { anzahlZellen: anzahlAngepasst, schwellwertVerletzt: irgendVerletzt, kommentar: null, empfaenger: meldeEmpfaenger });
+      await this.meldeForecastAnpassung(periode, regionCode, aktor, { anzahlZellen: anzahlAngepasst, schwellwertVerletzt: irgendVerletzt, kommentar, empfaenger: meldeEmpfaenger });
     }
     return { status: zielStatus, angepasst, schwellwertVerletzt: irgendVerletzt, gemeldetAn: meldeEmpfaenger.length };
   }
@@ -233,27 +218,9 @@ export class ForecastService {
     const { jahr, monate } = this.restMonate(periode);
     const budgetCells = await this.budgetRestProCell(jahr, regionCode, monate);
     const schwelle = await this.schwellwert();
-    const monatsSchwelle = await this.monatsSchwellwert();
 
-    // Per-Monats-Pflichtkommentar (nur Monatssicht): jeder Monat, dessen Forecast den Monats-Schwellwert
-    // (Default 5 %) gegen das Budget dieses Monats überschreitet, braucht eine Erklärung.
-    const fehlendeMonatsKommentare: string[] = [];
-    if (dto.monatsModus) for (const z of dto.zellen) {
-      const key = `${z.landId}|${z.e1Id}`;
-      const budgetMw = budgetCells.get(key);
-      for (const [m, w] of Object.entries(z.monatswerteRest)) {
-        const budgetMonat = budgetMw?.[m]?.eur ?? 0;
-        if (braucheKommentarGegen(w.eur ?? 0, budgetMonat, monatsSchwelle) && !w.kommentar?.trim()) {
-          fehlendeMonatsKommentare.push(`${z.e1Id}/${z.landId} ${m}`);
-        }
-      }
-    }
-    if (fehlendeMonatsKommentare.length > 0) {
-      throw new BadRequestException(
-        `Pflichtkommentar fehlt für Monate mit Abweichung > ${monatsSchwelle} %: ${fehlendeMonatsKommentare.join(', ')}`,
-      );
-    }
-
+    // Keine Kommentarpflicht mehr: Abweichungen werden in der Sicht farblich markiert. Der Schwellwert-
+    // Flag je Zelle bleibt nur informativ (Ampel); eine optionale Stellungnahme folgt beim Bestätigen.
     let irgendVerletzt = false;
     const adjust = new Map<string, { mw: MonatswerteRest; verletzt: boolean }>();
     for (const z of dto.zellen) {
