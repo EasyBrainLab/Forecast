@@ -4,13 +4,9 @@ import type { Transition } from './types';
 // Forecast-Zyklus (§8.2). Jede Transition erzeugt eine neue ForecastVersion (append-only).
 export const FORECAST_TRANSITIONS: readonly Transition<ForecastStatus>[] = [
   { id: 'F1', von: ForecastStatus.OFFEN, nach: ForecastStatus.BESTAETIGT, rollen: [Rolle.AGM] },
-  {
-    id: 'F2',
-    von: ForecastStatus.OFFEN,
-    nach: ForecastStatus.ANGEPASST,
-    rollen: [Rolle.AGM],
-    kommentarPflicht: 'BEI_SCHWELLWERT',
-  },
+  // Anpassen ohne Kommentarpflicht: Abweichungen werden in der Sicht farblich markiert; eine
+  // Stellungnahme kann der AGM beim finalen Bestätigen optional hinterlegen.
+  { id: 'F2', von: ForecastStatus.OFFEN, nach: ForecastStatus.ANGEPASST, rollen: [Rolle.AGM] },
   // F3/F4: Fertiggemeldeten Forecast auf OFFEN zurücksetzen (z. B. AGM hat versehentlich fertiggemeldet).
   // Leitung + Admin, Begründung Pflicht; F5 führt anschließend systemseitig auf OFFEN.
   {

@@ -68,7 +68,6 @@ export default function ForecastMonatlichPage() {
   const qc = useQueryClient();
   const [sel, setSel] = useState<{ periode: string; regionCode: string } | null>(null);
   const [edits, setEdits] = useState<Record<string, number>>({}); // key land|e1|periode -> EUR
-  const [comments, setComments] = useState<Record<string, string>>({}); // key land|e1|periode -> Begründung
   const [ueberBegr, setUeberBegr] = useState(''); // Pflicht-Begründung der Leitungs-Überschreibung
 
   const { data: perioden } = useQuery({ queryKey: ['meine'], queryFn: () => api.get<Periode[]>('/forecast/meine') });
@@ -124,50 +123,33 @@ export default function ForecastMonatlichPage() {
     return set;
   }, [edits]);
 
-  const fehlendeBegruendungen = useMemo(() => {
-    if (!matrix) return [] as { z: Zelle; p: string }[];
-    const out: { z: Zelle; p: string }[] = [];
-    for (const z of matrix.zellen) {
-      if (!editierteZellen.has(`${z.landId}|${z.e1Id}`)) continue;
-      for (const p of fcMonate) {
-        if (!verletzt(z, p)) continue;
-        const komm = comments[ek(z.landId, z.e1Id, p)] ?? z.monatswerteRest[p]?.kommentar ?? '';
-        if (!komm.trim()) out.push({ z, p });
-      }
-    }
-    return out;
-  }, [matrix, edits, comments, editierteZellen, fcMonate]);
-
+  // Optionale kurze Stellungnahme beim finalen Bestätigen (keine Pflicht).
+  const [stellungnahme, setStellungnahme] = useState('');
   const bestaetigen = useMutation({
-    mutationFn: () => api.post(`/forecast/${aktiv!.periode}/${aktiv!.regionCode}/bestaetigen`),
-    onSuccess: () => qc.invalidateQueries(),
+    mutationFn: () => api.post(`/forecast/${aktiv!.periode}/${aktiv!.regionCode}/bestaetigen`, { stellungnahme: stellungnahme.trim() || undefined }),
+    onSuccess: () => {
+      setStellungnahme('');
+      qc.invalidateQueries();
+    },
   });
 
-  // Baut die geänderten Zellen (land|e1) mit ihren Forecast-Monatswerten + Per-Monats-Kommentaren.
+  // Baut die geänderten Zellen (land|e1) mit ihren Forecast-Monatswerten; bestehende Kommentare bleiben erhalten.
   const baueZellen = () =>
     matrix!.zellen
       .filter((z) => editierteZellen.has(`${z.landId}|${z.e1Id}`))
       .map((z) => {
         const mw: Record<string, { eur: number; units?: number | null; kommentar?: string | null }> = {};
         for (const p of fcMonate) {
-          const key = ek(z.landId, z.e1Id, p);
-          const komm = (comments[key] ?? z.monatswerteRest[p]?.kommentar ?? '').trim();
+          const komm = z.monatswerteRest[p]?.kommentar ?? '';
           mw[p] = { eur: fcEur(z, p), units: z.monatswerteRest[p]?.units ?? null, ...(komm ? { kommentar: komm } : {}) };
         }
         return { landId: z.landId, e1Id: z.e1Id, monatswerteRest: mw };
       });
 
   const anpassen = useMutation({
-    mutationFn: () => {
-      // Per-Monats-Begründungen liegen in zelle.monatswerteRest[m].kommentar; der Top-Level-Kommentar
-      // (für die Zellen-Schwellwert-Prüfung, MaxLength 2000) ist nur eine kurze Zusammenfassung.
-      const anzBegr = Object.values(comments).filter((c) => c.trim()).length;
-      const kommentar = anzBegr ? `Monatsbegründungen (${anzBegr}) — Details je Monat gespeichert` : undefined;
-      return api.post(`/forecast/${aktiv!.periode}/${aktiv!.regionCode}/anpassen`, { kommentar, monatsModus: true, zellen: baueZellen() });
-    },
+    mutationFn: () => api.post(`/forecast/${aktiv!.periode}/${aktiv!.regionCode}/anpassen`, { monatsModus: true, zellen: baueZellen() }),
     onSuccess: () => {
       setEdits({});
-      setComments({});
       qc.invalidateQueries();
     },
   });
@@ -177,7 +159,6 @@ export default function ForecastMonatlichPage() {
     mutationFn: () => api.post(`/forecast/${aktiv!.periode}/${aktiv!.regionCode}/ueberschreiben`, { begruendung: ueberBegr.trim(), monatsModus: false, zellen: baueZellen() }),
     onSuccess: () => {
       setEdits({});
-      setComments({});
       setUeberBegr('');
       qc.invalidateQueries();
     },
@@ -269,14 +250,12 @@ export default function ForecastMonatlichPage() {
     if (ziel) {
       setSel({ periode: ziel.periode, regionCode: r });
       setEdits({});
-      setComments({});
     }
   };
   const waehlePeriode = (periode: string) => {
     if (!selRegion) return;
     setSel({ periode, regionCode: selRegion });
     setEdits({});
-    setComments({});
   };
 
   return (
@@ -383,15 +362,6 @@ export default function ForecastMonatlichPage() {
                 </Button>
                 {exportFehler && <span className="mt-1 text-xs text-ez-accent">✗ {exportFehler}</span>}
               </div>
-              {matrix.status === 'OFFEN' && user?.rolle === 'AGM' && Object.keys(edits).length === 0 && (
-                <div className="flex flex-col items-start">
-                  <Button onClick={() => bestaetigen.mutate()} disabled={bestaetigen.isPending}>
-                    {bestaetigen.isPending ? t('bestaetigt') : t('bestaetigen')}
-                  </Button>
-                  {anpassen.isSuccess && <span className="mt-1 max-w-[220px] text-xs text-ez-ampelGruen">{t('gespeichert')}</span>}
-                  {bestaetigen.isError && <span className="mt-1 max-w-[220px] text-xs text-ez-accent">✗ {(bestaetigen.error as Error).message}</span>}
-                </div>
-              )}
               <PeriodenAktionen periode={matrix.periode} regionCode={matrix.regionCode} status={matrix.status} />
             </div>
           </div>
@@ -467,12 +437,15 @@ export default function ForecastMonatlichPage() {
                         const rot = verletzt(z, p);
                         const key = ek(z.landId, z.e1Id, p);
                         const f = fcEur(z, p);
+                        // Markierung: rot bei Schwellwert-Überschreitung, sonst blau bei Abweichung vom Budget (geändert).
+                        const geaendert = !rot && Math.abs(f - (z.budgetMonate[p] ?? 0)) > 0.5;
+                        const zellText = rot ? 'font-semibold text-ez-ampelRot' : geaendert ? 'font-semibold text-ez-primary' : '';
                         return (
-                          <td key={p} className={`border-l border-gray-100 p-0 text-right ${rot ? 'bg-ez-ampelRot/10' : 'bg-yellow-50/40'}`}>
+                          <td key={p} className={`border-l border-gray-100 p-0 text-right ${rot ? 'bg-ez-ampelRot/10' : geaendert ? 'bg-ez-primary/10' : 'bg-yellow-50/40'}`}>
                             {editierbar ? (
                               <input
                                 type="number"
-                                className={`w-14 bg-transparent px-1 py-1 text-right tabular-nums focus:outline-none ${rot ? 'font-semibold text-ez-ampelRot' : ''}`}
+                                className={`w-14 bg-transparent px-1 py-1 text-right tabular-nums focus:outline-none ${zellText}`}
                                 value={edits[key] !== undefined ? edits[key] : Math.round(f / 1000)}
                                 onChange={(e) => {
                                   const v = e.target.value;
@@ -486,7 +459,7 @@ export default function ForecastMonatlichPage() {
                                 }}
                               />
                             ) : (
-                              <span className={`px-1 py-1 ${rot ? 'font-semibold text-ez-ampelRot' : ''}`}>{f ? f0(f) : ''}</span>
+                              <span className={`px-1 py-1 ${zellText}`}>{f ? f0(f) : ''}</span>
                             )}
                           </td>
                         );
@@ -524,45 +497,35 @@ export default function ForecastMonatlichPage() {
 
           {agmEditierbar && editierteZellen.size > 0 && (
             <div className="space-y-2 rounded border border-ez-primary/30 bg-ez-primary/5 p-3">
-              {fehlendeBegruendungen.length > 0 && (
-                <p className="text-sm font-medium text-ez-ampelRot">{t('begruendungNoetig', { anzahl: fehlendeBegruendungen.length, schwelle })}</p>
-              )}
-              {zeilen
-                .filter(({ z }) => editierteZellen.has(`${z.landId}|${z.e1Id}`))
-                .flatMap(({ z }) =>
-                  fcMonate.filter((p) => verletzt(z, p)).map((p) => {
-                    const key = ek(z.landId, z.e1Id, p);
-                    const val = comments[key] ?? z.monatswerteRest[p]?.kommentar ?? '';
-                    return (
-                      <div key={key} className="flex items-center gap-2">
-                        <span className="w-48 shrink-0 text-xs text-gray-600">
-                          {z.e1Name} · {z.landName} · {MONATS_KURZ[monatNr(p) - 1]}. {jj}
-                        </span>
-                        <input
-                          className={`flex-1 rounded border px-2 py-1 text-sm focus:outline-none ${val.trim() ? 'border-gray-300' : 'border-ez-ampelRot'}`}
-                          placeholder={t('begruendungPlaceholder')}
-                          value={val}
-                          onChange={(e) => setComments({ ...comments, [key]: e.target.value })}
-                        />
-                      </div>
-                    );
-                  }),
-                )}
               {anpassen.isError && <p className="text-sm text-ez-accent">{(anpassen.error as Error).message}</p>}
               <p className="text-xs text-gray-500">{t('speichernHinweis')}</p>
               <div className="flex gap-2 pt-1">
-                <Button onClick={() => anpassen.mutate()} disabled={anpassen.isPending || fehlendeBegruendungen.length > 0}>
+                <Button onClick={() => anpassen.mutate()} disabled={anpassen.isPending}>
                   {anpassen.isPending ? t('speichert') : t('speichern', { anzahl: editierteZellen.size })}
                 </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setEdits({});
-                    setComments({});
-                  }}
-                >
+                <Button variant="ghost" onClick={() => setEdits({})}>
                   {t('verwerfen')}
                 </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Fertigmelden: optionale Stellungnahme + finales Bestätigen (nur ohne ungespeicherte Änderungen). */}
+          {agmEditierbar && editierteZellen.size === 0 && (
+            <div className="space-y-2 rounded border border-ez-primary/30 bg-ez-primary/5 p-3">
+              <label className="block text-sm font-medium text-ez-primary">{t('stellungnahmeLabel')}</label>
+              <input
+                className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none"
+                placeholder={t('stellungnahmePlaceholder')}
+                value={stellungnahme}
+                onChange={(e) => setStellungnahme(e.target.value)}
+              />
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <Button onClick={() => bestaetigen.mutate()} disabled={bestaetigen.isPending}>
+                  {bestaetigen.isPending ? t('bestaetigt') : t('bestaetigen')}
+                </Button>
+                {anpassen.isSuccess && <span className="text-xs text-ez-ampelGruen">{t('gespeichert')}</span>}
+                {bestaetigen.isError && <span className="text-xs text-ez-accent">✗ {(bestaetigen.error as Error).message}</span>}
               </div>
             </div>
           )}
@@ -585,7 +548,6 @@ export default function ForecastMonatlichPage() {
                   variant="ghost"
                   onClick={() => {
                     setEdits({});
-                    setComments({});
                     setUeberBegr('');
                   }}
                 >

@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ALLE_ROLLEN, Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, type RequestUser } from '../common/decorators/current-user.decorator';
 import { ForecastService } from './forecast.service';
-import { AnpassenDto, OeffnePeriodeDto, UeberschreibenDto, WiederOeffnenDto, ZurueckweisenDto } from './forecast.dto';
+import { AnpassenDto, BestaetigenDto, OeffnePeriodeDto, UeberschreibenDto, WiederOeffnenDto, ZurueckweisenDto } from './forecast.dto';
 import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('forecast')
@@ -45,8 +45,8 @@ export class ForecastController {
 
   @Roles('AGM')
   @Post(':periode/:regionCode/bestaetigen')
-  bestaetigen(@Param('periode') periode: string, @Param('regionCode') regionCode: string, @CurrentUser() aktor: RequestUser) {
-    return this.service.bestaetigen(periode, regionCode, aktor);
+  bestaetigen(@Param('periode') periode: string, @Param('regionCode') regionCode: string, @Body() dto: BestaetigenDto, @CurrentUser() aktor: RequestUser) {
+    return this.service.bestaetigen(periode, regionCode, aktor, dto.stellungnahme);
   }
 
   @Roles('AGM')
