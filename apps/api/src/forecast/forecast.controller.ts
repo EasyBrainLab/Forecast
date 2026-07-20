@@ -33,7 +33,7 @@ export class ForecastController {
     return this.service.matrix(periode, regionCode, aktor);
   }
 
-  @Roles('ADMIN', 'BU_LEITER')
+  @Roles('ADMIN', 'BU_LEITER', 'VERTRIEBSLEITER')
   @Post('oeffnen')
   async oeffnen(@Body() dto: OeffnePeriodeDto, @CurrentUser() aktor: RequestUser) {
     const regionen = dto.regionCode

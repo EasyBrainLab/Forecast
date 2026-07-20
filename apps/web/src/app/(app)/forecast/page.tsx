@@ -50,7 +50,7 @@ export default function ForecastPage() {
     mutationFn: () => api.post('/forecast/oeffnen', { periode: neuePeriode }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['meine'] }),
   });
-  const kannOeffnen = user?.rolle === 'ADMIN' || user?.rolle === 'BU_LEITER';
+  const kannOeffnen = user?.rolle === 'ADMIN' || user?.rolle === 'BU_LEITER' || user?.rolle === 'VERTRIEBSLEITER';
   const aktiv = sel ?? (perioden && perioden[0] ? { periode: perioden[0].periode, regionCode: perioden[0].regionCode } : null);
   const { data: matrix } = useQuery({
     queryKey: ['matrix', aktiv?.periode, aktiv?.regionCode],
