@@ -49,7 +49,8 @@ export class ForecastController {
     return this.service.bestaetigen(periode, regionCode, aktor, dto.stellungnahme);
   }
 
-  @Roles('AGM')
+  /** Offenen Forecast als Entwurf bearbeiten — AGM sowie Vertriebs-/BU-Leitung (mitbearbeiten). */
+  @Roles('AGM', 'VERTRIEBSLEITER', 'BU_LEITER')
   @Post(':periode/:regionCode/anpassen')
   anpassen(@Param('periode') periode: string, @Param('regionCode') regionCode: string, @Body() dto: AnpassenDto, @CurrentUser() aktor: RequestUser) {
     return this.service.anpassen(periode, regionCode, aktor, dto);

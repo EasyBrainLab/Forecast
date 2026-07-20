@@ -199,6 +199,7 @@
     "fremdBannerText": "On {datum} by {von}. Please acknowledge.",
     "quittieren": "Acknowledge",
     "quittiereBusy": "Saving…",
+    "leitungOffenHinweis": "As management you are co-editing an open forecast of the region. Save your changes — the responsible AGM submits the forecast.",
     "ueberschreibHinweis": "You are editing a forecast that was already submitted. Your changes overwrite the AGM's submission; the AGM is notified and must acknowledge them.",
     "ueberschreibBegrTitel": "Overwrite {anzahl} cell(s) — reason (required)",
     "ueberschreibBegrPlaceholder": "Reason for the override…",

@@ -79,10 +79,14 @@ export default function ForecastMonatlichPage() {
   });
 
   const rolle = user?.rolle;
-  // AGM bearbeitet einen offenen Forecast; die Leitung überschreibt einen bereits fertiggemeldeten.
+  const istLeitung = rolle === 'VERTRIEBSLEITER' || rolle === 'BU_LEITER';
+  // AGM bearbeitet einen offenen Forecast; die Leitung darf offene Forecasts mitbearbeiten (Entwurf,
+  // der AGM reicht final ein) und einen bereits fertiggemeldeten überschreiben.
   const agmEditierbar = !!matrix && matrix.status === 'OFFEN' && rolle === 'AGM';
-  const leitungUeberschreibt = !!matrix && (rolle === 'VERTRIEBSLEITER' || rolle === 'BU_LEITER') && (matrix.status === 'BESTAETIGT' || matrix.status === 'ANGEPASST');
-  const editierbar = agmEditierbar || leitungUeberschreibt;
+  const leitungBearbeitetOffen = !!matrix && matrix.status === 'OFFEN' && istLeitung;
+  const leitungUeberschreibt = !!matrix && istLeitung && (matrix.status === 'BESTAETIGT' || matrix.status === 'ANGEPASST');
+  const offenBearbeitbar = agmEditierbar || leitungBearbeitetOffen;
+  const editierbar = offenBearbeitbar || leitungUeberschreibt;
   // Offene Fremdüberschreibung, die der AGM dieser Periode noch zur Kenntnis nehmen muss.
   const offeneKenntnisnahme = !!matrix?.fremdaenderung && !matrix.fremdaenderung.quittiertAm && rolle === 'AGM';
   const schwelle = matrix?.monatsSchwellwertProzent ?? 5;
@@ -382,6 +386,11 @@ export default function ForecastMonatlichPage() {
             </div>
           )}
 
+          {/* Leitung bearbeitet einen offenen Forecast der Region mit. */}
+          {leitungBearbeitetOffen && (
+            <div className="rounded-lg border border-ez-primary/40 bg-ez-primary/5 p-3 text-sm text-ez-primary">{t('leitungOffenHinweis')}</div>
+          )}
+
           {/* Leitung überschreibt einen bereits fertiggemeldeten Forecast. */}
           {leitungUeberschreibt && (
             <div className="rounded-lg border border-ez-primary/40 bg-ez-primary/5 p-3 text-sm text-ez-primary">{t('ueberschreibHinweis')}</div>
@@ -495,7 +504,7 @@ export default function ForecastMonatlichPage() {
             </table>
           </div>
 
-          {agmEditierbar && editierteZellen.size > 0 && (
+          {offenBearbeitbar && editierteZellen.size > 0 && (
             <div className="space-y-2 rounded border border-ez-primary/30 bg-ez-primary/5 p-3">
               {anpassen.isError && <p className="text-sm text-ez-accent">{(anpassen.error as Error).message}</p>}
               <p className="text-xs text-gray-500">{t('speichernHinweis')}</p>

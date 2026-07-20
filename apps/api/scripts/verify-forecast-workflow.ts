@@ -66,6 +66,7 @@ async function main(): Promise<void> {
   const mw = ver.monatswerteRest as Record<string, { eur: number; units?: number | null }>;
   const breach = Object.fromEntries(Object.entries(mw).map(([k, v]) => [k, { eur: (v.eur || 1000) * 2 + 5000, units: v.units }]));
   const zelle = { landId: ver.landId, e1Id: ver.e1Id, monatswerteRest: breach };
+  check('Leitung (VL) darf offenen Forecast mitbearbeiten', (await svc.anpassen(periode, region, vl, { monatsModus: true, zellen: [zelle] })).status === 'OFFEN');
   check('Speichern >Schwellwert ohne Begründung möglich (keine Pflicht mehr)', (await svc.anpassen(periode, region, agm, { monatsModus: true, zellen: [zelle] })).status === 'OFFEN');
   const pDraft = await prisma.forecastPeriode.findUniqueOrThrow({ where: { periode_regionCode: { periode, regionCode: region } } });
   check('Periode nach Speichern weiterhin OFFEN (editierbar)', pDraft.status === 'OFFEN');
