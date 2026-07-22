@@ -380,26 +380,29 @@ export default function ForecastMonatlichPage() {
       )}
 
       {matrix && totals && (
-        <Card className="space-y-4">
+        <Card className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="font-semibold">
                 {matrix.regionCode} · {matrix.periode}
               </span>
-              <span className={`ml-2 rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusPill(matrix.status)}`}>{matrix.status}</span>
-              <span className="ml-2 inline-block rounded bg-ez-accent px-2 py-0.5 text-xs font-bold text-white">{t('kEurHinweis')}</span>
-              <span className="ml-2 text-xs text-gray-400">{t('monatsSchwellwert', { schwelle })}</span>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusPill(matrix.status)}`}>{matrix.status}</span>
+              <span className="rounded bg-ez-accent px-2 py-0.5 text-xs font-bold text-white">{t('kEurHinweis')}</span>
+              <span className="text-xs text-gray-400">{t('monatsSchwellwert', { schwelle })}</span>
             </div>
-            <div className="flex flex-wrap items-start gap-2">
-              <div className="flex flex-col items-start">
-                <Button variant="ghost" onClick={exportMatrix} disabled={exportBusy}>
-                  {exportBusy ? t('exportErzeuge') : t('exportExcel')}
+            <div className="flex flex-wrap items-center gap-2">
+              {offenBearbeitbar && !neueZeileOffen && (
+                <Button variant="ghost" onClick={() => setNeueZeileOffen(true)}>
+                  + {t('neueZeile')}
                 </Button>
-                {exportFehler && <span className="mt-1 text-xs text-ez-accent">✗ {exportFehler}</span>}
-              </div>
+              )}
+              <Button variant="ghost" onClick={exportMatrix} disabled={exportBusy}>
+                {exportBusy ? t('exportErzeuge') : t('exportExcel')}
+              </Button>
               <PeriodenAktionen periode={matrix.periode} regionCode={matrix.regionCode} status={matrix.status} />
             </div>
           </div>
+          {exportFehler && <span className="block text-xs text-ez-accent">✗ {exportFehler}</span>}
 
           {/* AGM: offene Fremdüberschreibung durch die Leitung zur Kenntnis nehmen. */}
           {offeneKenntnisnahme && matrix.fremdaenderung && (
@@ -419,62 +422,51 @@ export default function ForecastMonatlichPage() {
 
           {/* Leitung bearbeitet einen offenen Forecast der Region mit. */}
           {leitungBearbeitetOffen && (
-            <div className="rounded-lg border border-ez-primary/40 bg-ez-primary/5 p-3 text-sm text-ez-primary">{t('leitungOffenHinweis')}</div>
+            <div className="rounded border border-ez-primary/30 bg-ez-primary/5 px-3 py-1.5 text-xs text-ez-primary">{t('leitungOffenHinweis')}</div>
           )}
 
           {/* Leitung überschreibt einen bereits fertiggemeldeten Forecast. */}
           {leitungUeberschreibt && (
-            <div className="rounded-lg border border-ez-primary/40 bg-ez-primary/5 p-3 text-sm text-ez-primary">{t('ueberschreibHinweis')}</div>
+            <div className="rounded border border-ez-primary/30 bg-ez-primary/5 px-3 py-1.5 text-xs text-ez-primary">{t('ueberschreibHinweis')}</div>
           )}
 
-          {/* Neue Forecast-Zeile (Land × Produktgruppe) — nur in offener Periode. */}
-          {offenBearbeitbar && (
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-              {!neueZeileOffen ? (
-                <Button variant="ghost" onClick={() => setNeueZeileOffen(true)}>
-                  + {t('neueZeile')}
-                </Button>
+          {/* Neue Forecast-Zeile (Land × Produktgruppe) — kompaktes Formular, nur wenn geöffnet. */}
+          {offenBearbeitbar && neueZeileOffen && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+              <select className="rounded border px-2 py-1" value={neuE1} onChange={(e) => setNeuE1(e.target.value)}>
+                <option value="">{t('spalteProduktgruppe')} …</option>
+                {produktgruppen?.e1.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.nameDe}
+                  </option>
+                ))}
+              </select>
+              <select className="rounded border px-2 py-1" value={neuLand} onChange={(e) => setNeuLand(e.target.value)}>
+                <option value="">{t('land')} …</option>
+                {laender?.map((l) => (
+                  <option key={l.isoCode} value={l.isoCode}>
+                    {l.nameDe}
+                  </option>
+                ))}
+              </select>
+              <Button onClick={() => neueZeile.mutate()} disabled={!neuLand || !neuE1 || neueZeile.isPending}>
+                {neueZeile.isPending ? t('legtAn') : t('anlegen')}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setNeueZeileOffen(false);
+                  setNeuLand('');
+                  setNeuE1('');
+                }}
+              >
+                {t('abbrechen')}
+              </Button>
+              {neueZeile.isError ? (
+                <span className="text-xs text-ez-accent">✗ {(neueZeile.error as Error).message}</span>
               ) : (
-                <div className="flex flex-wrap items-end gap-3">
-                  <label className="text-sm">
-                    <div className="mb-1 text-gray-500">{t('spalteProduktgruppe')}</div>
-                    <select className="rounded border px-2 py-1" value={neuE1} onChange={(e) => setNeuE1(e.target.value)}>
-                      <option value="">{t('bitteWaehlen')}</option>
-                      {produktgruppen?.e1.map((e) => (
-                        <option key={e.id} value={e.id}>
-                          {e.nameDe}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="text-sm">
-                    <div className="mb-1 text-gray-500">{t('land')}</div>
-                    <select className="rounded border px-2 py-1" value={neuLand} onChange={(e) => setNeuLand(e.target.value)}>
-                      <option value="">{t('bitteWaehlen')}</option>
-                      {laender?.map((l) => (
-                        <option key={l.isoCode} value={l.isoCode}>
-                          {l.nameDe}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <Button onClick={() => neueZeile.mutate()} disabled={!neuLand || !neuE1 || neueZeile.isPending}>
-                    {neueZeile.isPending ? t('legtAn') : t('anlegen')}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      setNeueZeileOffen(false);
-                      setNeuLand('');
-                      setNeuE1('');
-                    }}
-                  >
-                    {t('abbrechen')}
-                  </Button>
-                  {neueZeile.isError && <span className="text-xs text-ez-accent">✗ {(neueZeile.error as Error).message}</span>}
-                </div>
+                <span className="text-xs text-gray-400">{t('neueZeileHinweis')}</span>
               )}
-              <p className="mt-2 text-xs text-gray-400">{t('neueZeileHinweis')}</p>
             </div>
           )}
 
