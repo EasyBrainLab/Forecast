@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ALLE_ROLLEN, Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, type RequestUser } from '../common/decorators/current-user.decorator';
 import { ForecastService } from './forecast.service';
-import { AnpassenDto, BestaetigenDto, OeffnePeriodeDto, UeberschreibenDto, WiederOeffnenDto, ZurueckweisenDto } from './forecast.dto';
+import { AnpassenDto, BestaetigenDto, OeffnePeriodeDto, UeberschreibenDto, VergleichQueryDto, WiederOeffnenDto, ZurueckweisenDto } from './forecast.dto';
 import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('forecast')
@@ -25,6 +25,13 @@ export class ForecastController {
   @Get('meine')
   meine(@CurrentUser() aktor: RequestUser) {
     return this.service.meinePerioden(aktor);
+  }
+
+  /** Vergleich zweier Forecast-Stände (Perioden) einer Region — größte Umsatzabweichungen je Land. */
+  @Roles('AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN')
+  @Get('vergleich')
+  vergleich(@Query() q: VergleichQueryDto, @CurrentUser() aktor: RequestUser) {
+    return this.service.vergleich(q.periodeA, q.periodeB, q.regionCode, q.modus ?? 'YEE', aktor);
   }
 
   @Roles(...ALLE_ROLLEN)
