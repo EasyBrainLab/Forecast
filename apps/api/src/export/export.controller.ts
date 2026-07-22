@@ -49,6 +49,26 @@ export class ExportController {
     res.send(buf);
   }
 
+  /** Kurzbericht: größte Umsatzabweichungen je Land aus dem Vergleich zweier Forecast-Stände (Excel). */
+  @Roles('AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN')
+  @Get('forecast-vergleich')
+  async forecastVergleich(
+    @Query('periodeA') periodeA: string,
+    @Query('periodeB') periodeB: string,
+    @Query('regionCode') regionCode: string,
+    @Query('modus') modus: string,
+    @CurrentUser() aktor: RequestUser,
+    @Res() res: Response,
+  ): Promise<void> {
+    const m = modus === 'RESTMONATE' ? 'RESTMONATE' : 'YEE';
+    const buf = await this.service.vergleichBericht(periodeA, periodeB, regionCode, m, aktor);
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="forecast-vergleich-${regionCode}-${periodeA}-${periodeB}.xlsx"`,
+    });
+    res.send(buf);
+  }
+
   @Roles('BU_LEITER')
   @Post('word-report')
   async wordReport(@Query('jahr') jahr: string, @CurrentUser() aktor: RequestUser, @Res() res: Response): Promise<void> {

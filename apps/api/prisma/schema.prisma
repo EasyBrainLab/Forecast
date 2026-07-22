@@ -687,6 +687,7 @@ model AgmStatement {
   forecastRealistisch Boolean          @default(true)
   forecastKommentar   String?
   actionItems         Json             @default("[]") // [{beschreibung, faelligBis, erledigt}]
+  rueckfragen         Json             @default("[]") // [{id, landId?, e1Id?, frage, frageVon, frageVonName, frageAm, antwort?, antwortVon?, antwortVonName?, antwortAm?, status}] — Klärungs-Dialog BU/VL ↔ AGM
   status              StatementStatus  @default(ENTWURF)
   eingereichtAm       DateTime?
   erstelltAm          DateTime         @default(now())

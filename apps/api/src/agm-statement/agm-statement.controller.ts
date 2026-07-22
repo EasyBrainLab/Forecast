@@ -61,6 +61,28 @@ class StatementDto {
   actionItems?: { beschreibung: string; faelligBis: string | null; erledigt: boolean }[];
 }
 
+class RueckfrageStellenDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  landId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  e1Id?: string;
+
+  @IsString()
+  @MaxLength(2000)
+  frage!: string;
+}
+
+class RueckfrageAntwortDto {
+  @IsString()
+  @MaxLength(2000)
+  antwort!: string;
+}
+
 @ApiTags('agm-statement')
 @ApiBearerAuth()
 @Controller('agm-statement')
@@ -95,5 +117,33 @@ export class AgmStatementController {
   @Post('periode/:periode/region/:regionCode/zuruecksetzen')
   zuruecksetzen(@Param('periode') periode: string, @Param('regionCode') regionCode: string, @CurrentUser() aktor: RequestUser) {
     return this.service.zuruecksetzen(periode, regionCode, aktor);
+  }
+
+  /** Offene Rückfragen im Scope (AGM: zu beantworten, Leitung: Überblick) — für Board/Badge. */
+  @Roles(...ALLE_ROLLEN)
+  @Get('rueckfragen')
+  rueckfragen(@CurrentUser() aktor: RequestUser) {
+    return this.service.offeneRueckfragen(aktor);
+  }
+
+  /** Leitung/Admin stellt eine Rückfrage an den AGM (zu einer Forecast-Position). */
+  @Roles('VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN')
+  @Post('periode/:periode/region/:regionCode/rueckfrage')
+  rueckfrageStellen(@Param('periode') periode: string, @Param('regionCode') regionCode: string, @Body() dto: RueckfrageStellenDto, @CurrentUser() aktor: RequestUser) {
+    return this.service.rueckfrageStellen(periode, regionCode, dto, aktor);
+  }
+
+  /** AGM beantwortet eine Rückfrage (eigene Region). */
+  @Roles('AGM')
+  @Post('periode/:periode/region/:regionCode/rueckfrage/:id/antwort')
+  rueckfrageBeantworten(@Param('periode') periode: string, @Param('regionCode') regionCode: string, @Param('id') id: string, @Body() dto: RueckfrageAntwortDto, @CurrentUser() aktor: RequestUser) {
+    return this.service.rueckfrageBeantworten(periode, regionCode, id, dto.antwort, aktor);
+  }
+
+  /** Leitung/Admin schließt eine beantwortete Rückfrage ab. */
+  @Roles('VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN')
+  @Post('periode/:periode/region/:regionCode/rueckfrage/:id/schliessen')
+  rueckfrageSchliessen(@Param('periode') periode: string, @Param('regionCode') regionCode: string, @Param('id') id: string, @CurrentUser() aktor: RequestUser) {
+    return this.service.rueckfrageSchliessen(periode, regionCode, id, aktor);
   }
 }

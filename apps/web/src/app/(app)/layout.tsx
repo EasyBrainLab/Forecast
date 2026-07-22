@@ -10,6 +10,7 @@ const NAV: { href: string; key: string; rollen: Rolle[] }[] = [
   { href: '/uebersicht', key: 'uebersicht', rollen: ['AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT'] },
   { href: '/forecast', key: 'forecast', rollen: ['AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN'] },
   { href: '/forecast-monatlich', key: 'forecastMonat', rollen: ['AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN'] },
+  { href: '/forecast-vergleich', key: 'forecastVergleich', rollen: ['AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN'] },
   { href: '/report', key: 'report', rollen: ['AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT'] },
   { href: '/report-board', key: 'reportBoard', rollen: ['VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT'] },
   { href: '/tender', key: 'tender', rollen: ['AGM', 'VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT'] },

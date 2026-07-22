@@ -1,7 +1,10 @@
+import { randomUUID } from 'crypto';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { MailService } from '../mail/mail.service';
+import { infoMail } from '../mail/mail.templates';
 import { ScopeService } from '../scope/scope.service';
 import type { RequestUser } from '../common/decorators/current-user.decorator';
 
@@ -10,6 +13,26 @@ export interface ActionItem {
   faelligBis: string | null;
   erledigt: boolean;
 }
+
+export type RueckfrageStatus = 'OFFEN' | 'BEANTWORTET' | 'GESCHLOSSEN';
+
+/** Klärungs-Dialog BU/VL → AGM zu einer Forecast-Position (ein Frage-/Antwort-Paar je Eintrag). */
+export interface Rueckfrage {
+  id: string;
+  landId: string | null;
+  e1Id: string | null;
+  frage: string;
+  frageVon: string;
+  frageVonName: string;
+  frageAm: string;
+  antwort: string | null;
+  antwortVon: string | null;
+  antwortVonName: string | null;
+  antwortAm: string | null;
+  status: RueckfrageStatus;
+}
+
+const LEITUNG = ['VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN'] as readonly string[];
 
 /** Felder, die der AGM setzen darf (Whitelist-PATCH; nie status/userId/timestamps aus dem Body). */
 export interface StatementInput {
@@ -34,6 +57,7 @@ export class AgmStatementService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly scope: ScopeService,
+    private readonly mail: MailService,
   ) {}
 
   private parsePeriode(periode: string): { jahr: number; monat: number } {
@@ -105,10 +129,31 @@ export class AgmStatementService {
       forecastRealistisch: s.forecastRealistisch,
       forecastKommentar: s.forecastKommentar,
       actionItems: (s.actionItems as unknown as ActionItem[]) ?? [],
+      rueckfragen: this.leseRueckfragen(s.rueckfragen),
       status: s.status,
       eingereichtAm: s.eingereichtAm,
       aktualisiertAm: s.aktualisiertAm,
     };
+  }
+
+  private leseRueckfragen(raw: unknown): Rueckfrage[] {
+    return Array.isArray(raw) ? (raw as Rueckfrage[]) : [];
+  }
+
+  /** Aktive AGM-E-Mails einer Region (für Rückfrage-Benachrichtigung). */
+  private async aktiveAgmEmails(regionCode: string): Promise<string[]> {
+    const heute = new Date();
+    const vs = await this.prisma.regionsVerantwortung.findMany({
+      where: {
+        regionCode,
+        geloeschtAm: null,
+        gueltigVon: { lte: heute },
+        OR: [{ gueltigBis: null }, { gueltigBis: { gte: heute } }],
+        user: { rolle: 'AGM', status: 'VERIFIZIERT' },
+      },
+      select: { user: { select: { email: true } } },
+    });
+    return [...new Set(vs.map((v) => v.user.email))];
   }
 
   private cleanGrund(g?: string): 'KEINE_ABWEICHUNG' | 'MARKT' | 'WETTBEWERB' | 'PREIS' | 'PROJEKTVERSCHIEBUNG' | 'REGULATORISCH' | 'LIEFERFAEHIGKEIT' | 'EINMALEFFEKT' | 'SONSTIGES' {
@@ -200,5 +245,99 @@ export class AgmStatementService {
       }
     }
     return offen;
+  }
+
+  /** Rückfrage an den AGM stellen (nur Leitung/Admin). Legt das Statement bei Bedarf an, benachrichtigt den AGM. */
+  async rueckfrageStellen(
+    periode: string,
+    regionCode: string,
+    input: { landId?: string | null; e1Id?: string | null; frage: string },
+    aktor: RequestUser,
+  ) {
+    if (!LEITUNG.includes(aktor.rolle)) throw new ForbiddenException('Nur Vertriebs-/BU-Leitung oder Admin können Rückfragen stellen.');
+    const frage = input.frage?.trim();
+    if (!frage) throw new BadRequestException('Frage darf nicht leer sein.');
+    const { jahr, monat } = this.parsePeriode(periode);
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: aktor.id }, select: { name: true } });
+    const vorhanden = await this.prisma.agmStatement.findUnique({ where: { periode_regionCode: { periode, regionCode } } });
+    const neu: Rueckfrage = {
+      id: randomUUID(),
+      landId: input.landId?.trim() || null,
+      e1Id: input.e1Id?.trim() || null,
+      frage: frage.slice(0, 2000),
+      frageVon: aktor.id,
+      frageVonName: user.name,
+      frageAm: new Date().toISOString(),
+      antwort: null,
+      antwortVon: null,
+      antwortVonName: null,
+      antwortAm: null,
+      status: 'OFFEN',
+    };
+    const liste = [...this.leseRueckfragen(vorhanden?.rueckfragen), neu];
+    const result = await this.prisma.agmStatement.upsert({
+      where: { periode_regionCode: { periode, regionCode } },
+      update: { rueckfragen: liste as unknown as Prisma.InputJsonValue },
+      create: { periode, jahr, monat, regionCode, userId: aktor.id, userName: user.name, status: 'ENTWURF', rueckfragen: liste as unknown as Prisma.InputJsonValue },
+    });
+    await this.audit.write({ entitaet: 'AgmStatement', entitaetId: result.id, aktion: 'UPDATE', userId: aktor.id, userEmail: aktor.email, metadaten: { periode, regionCode, rueckfrageId: neu.id, aktion: 'RUECKFRAGE_GESTELLT' } });
+    const landHinweis = neu.landId ? ` (${neu.landId})` : '';
+    for (const to of await this.aktiveAgmEmails(regionCode)) {
+      await this.mail.send(to, infoMail(`Forecast-Rückfrage ${regionCode} ${periode}`, 'Neue Forecast-Rückfrage', `${user.name} hat eine Rückfrage zum Forecast ${regionCode} ${periode}${landHinweis} gestellt: „${frage}". Bitte im Forecast-Portal beantworten.`));
+    }
+    return this.toDto(result);
+  }
+
+  /** AGM beantwortet eine Rückfrage (eigene Region). Benachrichtigt den Fragesteller. */
+  async rueckfrageBeantworten(periode: string, regionCode: string, rueckfrageId: string, antwortText: string, aktor: RequestUser) {
+    if (aktor.rolle !== 'AGM') throw new ForbiddenException('Nur der AGM kann Rückfragen beantworten.');
+    this.scope.assertSchreibScope(await this.scope.getScope(aktor), regionCode);
+    const antwort = antwortText?.trim();
+    if (!antwort) throw new BadRequestException('Antwort darf nicht leer sein.');
+    const vorhanden = await this.prisma.agmStatement.findUnique({ where: { periode_regionCode: { periode, regionCode } } });
+    if (!vorhanden) throw new NotFoundException('Keine Rückfrage vorhanden.');
+    const liste = this.leseRueckfragen(vorhanden.rueckfragen);
+    const rf = liste.find((r) => r.id === rueckfrageId);
+    if (!rf) throw new NotFoundException('Rückfrage nicht gefunden.');
+    if (rf.status === 'GESCHLOSSEN') throw new ForbiddenException('Rückfrage ist bereits geschlossen.');
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: aktor.id }, select: { name: true } });
+    const liste2 = liste.map((r) =>
+      r.id === rueckfrageId ? { ...r, antwort: antwort.slice(0, 2000), antwortVon: aktor.id, antwortVonName: user.name, antwortAm: new Date().toISOString(), status: 'BEANTWORTET' as RueckfrageStatus } : r,
+    );
+    const result = await this.prisma.agmStatement.update({ where: { id: vorhanden.id }, data: { rueckfragen: liste2 as unknown as Prisma.InputJsonValue } });
+    await this.audit.write({ entitaet: 'AgmStatement', entitaetId: result.id, aktion: 'UPDATE', userId: aktor.id, userEmail: aktor.email, metadaten: { periode, regionCode, rueckfrageId, aktion: 'RUECKFRAGE_BEANTWORTET' } });
+    const frager = await this.prisma.user.findUnique({ where: { id: rf.frageVon }, select: { email: true } });
+    if (frager?.email) {
+      await this.mail.send(frager.email, infoMail(`Antwort auf Ihre Forecast-Rückfrage ${regionCode} ${periode}`, 'Rückfrage beantwortet', `${user.name} hat Ihre Rückfrage zu ${regionCode} ${periode} beantwortet: „${antwort}".`));
+    }
+    return this.toDto(result);
+  }
+
+  /** Leitung/Admin schließt eine (beantwortete) Rückfrage ab. */
+  async rueckfrageSchliessen(periode: string, regionCode: string, rueckfrageId: string, aktor: RequestUser) {
+    if (!LEITUNG.includes(aktor.rolle)) throw new ForbiddenException('Nur Vertriebs-/BU-Leitung oder Admin können Rückfragen schließen.');
+    const vorhanden = await this.prisma.agmStatement.findUnique({ where: { periode_regionCode: { periode, regionCode } } });
+    if (!vorhanden) throw new NotFoundException('Keine Rückfrage vorhanden.');
+    const liste = this.leseRueckfragen(vorhanden.rueckfragen);
+    if (!liste.some((r) => r.id === rueckfrageId)) throw new NotFoundException('Rückfrage nicht gefunden.');
+    const liste2 = liste.map((r) => (r.id === rueckfrageId ? { ...r, status: 'GESCHLOSSEN' as RueckfrageStatus } : r));
+    const result = await this.prisma.agmStatement.update({ where: { id: vorhanden.id }, data: { rueckfragen: liste2 as unknown as Prisma.InputJsonValue } });
+    await this.audit.write({ entitaet: 'AgmStatement', entitaetId: result.id, aktion: 'UPDATE', userId: aktor.id, userEmail: aktor.email, metadaten: { periode, regionCode, rueckfrageId, aktion: 'RUECKFRAGE_GESCHLOSSEN' } });
+    return this.toDto(result);
+  }
+
+  /** Nicht geschlossene Rückfragen über die sichtbaren Regionen (AGM: zu beantworten; Leitung: Überblick). */
+  async offeneRueckfragen(aktor: RequestUser) {
+    const regionen = await this.sichtbareRegionen(aktor);
+    const codes = regionen.map((r) => r.code);
+    const regBez = new Map(regionen.map((r) => [r.code, r.bezeichnung]));
+    const statements = await this.prisma.agmStatement.findMany({ where: { regionCode: { in: codes.length ? codes : ['__none__'] } }, orderBy: [{ periode: 'desc' }] });
+    const out: (Rueckfrage & { periode: string; regionCode: string; region: string })[] = [];
+    for (const s of statements) {
+      for (const rf of this.leseRueckfragen(s.rueckfragen)) {
+        if (rf.status !== 'GESCHLOSSEN') out.push({ ...rf, periode: s.periode, regionCode: s.regionCode, region: regBez.get(s.regionCode) ?? s.regionCode });
+      }
+    }
+    return out;
   }
 }

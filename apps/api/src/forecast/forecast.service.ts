@@ -2,9 +2,11 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { ConfigService } from '@nestjs/config';
 import { ForecastStatus, Prisma } from '@prisma/client';
 import {
+  abwProz,
   EINSTELLUNG_KEYS,
   FORECAST_TRANSITIONS,
   formatPeriode,
+  parsePeriode,
   schwellwertVerletzt as istSchwellwertVerletzt,
   type MonatswerteRest,
 } from '@forecast/shared';
@@ -571,6 +573,137 @@ export class ForecastService {
           }
         : null,
       zellen,
+    };
+  }
+
+  /**
+   * Vergleicht zwei Forecast-Stände (Perioden) einer Region und liefert die größten Umsatzabweichungen je Land.
+   *  - 'YEE' (Standard): Jahres-Erwartung = Ist YTD (bis Periodenmonat) + Forecast-Rest. Neutralisiert die
+   *    "abgelaufener Monat"-Verzerrung, weil vergangene Monate in beiden Ständen durch dasselbe Ist ersetzt werden.
+   *  - 'RESTMONATE': reiner Forecast-Drift über die in BEIDEN Ständen prognostizierten (überlappenden) Monate.
+   * Aggregiert je Land (Drilldown je Produktgruppe/E1), sortiert nach größter absoluter Abweichung.
+   */
+  async vergleich(
+    periodeA: string,
+    periodeB: string,
+    regionCode: string,
+    modus: 'YEE' | 'RESTMONATE',
+    aktor: RequestUser,
+  ) {
+    await this.assertAgmRead(aktor, regionCode);
+    const a = this.restMonate(periodeA);
+    const b = this.restMonate(periodeB);
+    if (a.jahr !== b.jahr) {
+      throw new BadRequestException('Beide Perioden müssen dasselbe Forecast-Jahr betreffen.');
+    }
+    const jahr = a.jahr;
+    const ueberlappAbMonat = Math.max(a.monat, b.monat); // erster in BEIDEN Ständen prognostizierte Restmonat
+    const ksts = await this.prisma.kostenstelle.findMany({ where: { regionCode }, select: { id: true } });
+    const kstIds = ksts.map((k) => k.id);
+    const [latestA, latestB, istGrp, e1s, laender] = await Promise.all([
+      this.latestVersionen(this.prisma, periodeA, regionCode),
+      this.latestVersionen(this.prisma, periodeB, regionCode),
+      this.prisma.istUmsatz.groupBy({
+        by: ['landId', 'e1Id', 'monat'],
+        where: { jahr, monat: { lt: ueberlappAbMonat }, kostenstelleId: { in: kstIds } },
+        _sum: { wertEur: true },
+      }),
+      this.prisma.produktgruppeE1.findMany({ select: { id: true, nameDe: true } }),
+      this.prisma.land.findMany({ select: { isoCode: true, nameDe: true } }),
+    ]);
+    const e1Name = new Map(e1s.map((e) => [e.id, e.nameDe]));
+    const landName = new Map(laender.map((l) => [l.isoCode, l.nameDe]));
+
+    // Ist je Zelle je Monat -> für YEE das YTD bis zum jeweiligen Periodenmonat des Stands.
+    const istZelleMonat = new Map<string, Record<number, number>>();
+    for (const g of istGrp) {
+      const key = `${g.landId}|${g.e1Id}`;
+      const rec = istZelleMonat.get(key) ?? {};
+      rec[g.monat] = (rec[g.monat] ?? 0) + Number(g._sum.wertEur ?? 0);
+      istZelleMonat.set(key, rec);
+    }
+    const istYtdBis = (key: string, monatExkl: number): number => {
+      const rec = istZelleMonat.get(key);
+      if (!rec) return 0;
+      let s = 0;
+      for (const [m, eur] of Object.entries(rec)) if (Number(m) < monatExkl) s += eur;
+      return s;
+    };
+    const fcRest = (mw: MonatswerteRest): number => {
+      if (modus !== 'RESTMONATE') return summeEur(mw);
+      let s = 0;
+      for (const [p, w] of Object.entries(mw)) {
+        const parsed = parsePeriode(p);
+        if (!parsed || parsed.jahr !== jahr || parsed.monat < ueberlappAbMonat) continue;
+        s += w?.eur ?? 0;
+      }
+      return s;
+    };
+    const wertFor = (mw: MonatswerteRest, key: string, monatExkl: number): number =>
+      modus === 'YEE' ? istYtdBis(key, monatExkl) + fcRest(mw) : fcRest(mw);
+
+    const wertA = new Map<string, number>();
+    const wertB = new Map<string, number>();
+    for (const v of latestA) {
+      const key = `${v.landId}|${v.e1Id}`;
+      wertA.set(key, wertFor(v.monatswerteRest as unknown as MonatswerteRest, key, a.monat));
+    }
+    for (const v of latestB) {
+      const key = `${v.landId}|${v.e1Id}`;
+      wertB.set(key, wertFor(v.monatswerteRest as unknown as MonatswerteRest, key, b.monat));
+    }
+
+    // Union aller Zellen (Land×E1), je Land aggregieren, Drilldown je E1.
+    const perLand = new Map<string, { wa: number; wb: number; e1: Map<string, { wa: number; wb: number }> }>();
+    for (const key of new Set<string>([...wertA.keys(), ...wertB.keys()])) {
+      const [landId, e1Id] = key.split('|');
+      const wa = wertA.get(key) ?? 0;
+      const wb = wertB.get(key) ?? 0;
+      const l = perLand.get(landId) ?? { wa: 0, wb: 0, e1: new Map() };
+      l.wa += wa;
+      l.wb += wb;
+      l.e1.set(e1Id, { wa, wb });
+      perLand.set(landId, l);
+    }
+
+    const schwelle = await this.schwellwert();
+    const ampelFor = (proz: number | null): 'grau' | 'rot' | 'gruen' =>
+      proz === null ? 'grau' : Math.abs(proz) > schwelle ? 'rot' : 'gruen';
+
+    const laenderOut = [...perLand.entries()]
+      .map(([landId, l]) => ({
+        landId,
+        landName: landName.get(landId) ?? landId,
+        wertA: l.wa,
+        wertB: l.wb,
+        abweichungEur: l.wb - l.wa,
+        abweichungProzent: abwProz(l.wb, l.wa),
+        ampel: ampelFor(abwProz(l.wb, l.wa)),
+        produktgruppen: [...l.e1.entries()]
+          .map(([e1Id, w]) => ({
+            e1Id,
+            e1Name: e1Name.get(e1Id) ?? e1Id,
+            wertA: w.wa,
+            wertB: w.wb,
+            abweichungEur: w.wb - w.wa,
+            abweichungProzent: abwProz(w.wb, w.wa),
+          }))
+          .sort((x, y) => Math.abs(y.abweichungEur) - Math.abs(x.abweichungEur)),
+      }))
+      .sort((x, y) => Math.abs(y.abweichungEur) - Math.abs(x.abweichungEur));
+
+    const summeA = laenderOut.reduce((s, l) => s + l.wertA, 0);
+    const summeB = laenderOut.reduce((s, l) => s + l.wertB, 0);
+    return {
+      periodeA,
+      periodeB,
+      regionCode,
+      jahr,
+      modus,
+      ueberlappAbMonat: modus === 'RESTMONATE' ? ueberlappAbMonat : null,
+      schwellwertProzent: schwelle,
+      summe: { wertA: summeA, wertB: summeB, abweichungEur: summeB - summeA, abweichungProzent: abwProz(summeB, summeA) },
+      laender: laenderOut,
     };
   }
 }

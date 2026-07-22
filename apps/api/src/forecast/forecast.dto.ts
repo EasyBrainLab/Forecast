@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
+  IsIn,
   IsObject,
   IsOptional,
   IsString,
@@ -114,4 +115,21 @@ export class OeffnePeriodeDto {
   @IsOptional()
   @IsString()
   regionCode?: string;
+}
+
+/** Vergleich zweier Forecast-Stände (Perioden) einer Region. */
+export class VergleichQueryDto {
+  @Matches(/^\d{4}-\d{2}$/)
+  periodeA!: string;
+
+  @Matches(/^\d{4}-\d{2}$/)
+  periodeB!: string;
+
+  @IsString()
+  regionCode!: string;
+
+  // YEE (Standard) = Jahres-Erwartung; RESTMONATE = reiner Forecast-Drift der überlappenden Restmonate.
+  @IsOptional()
+  @IsIn(['YEE', 'RESTMONATE'])
+  modus?: 'YEE' | 'RESTMONATE';
 }

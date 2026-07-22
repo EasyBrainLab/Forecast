@@ -69,6 +69,57 @@ export class ExportService {
     return Buffer.from(arr);
   }
 
+  /** Excel-Kurzbericht: größte Umsatzabweichungen je Land aus dem Vergleich zweier Forecast-Stände. */
+  async vergleichBericht(
+    periodeA: string,
+    periodeB: string,
+    regionCode: string,
+    modus: 'YEE' | 'RESTMONATE',
+    aktor: RequestUser,
+  ): Promise<Buffer> {
+    const v = await this.forecast.vergleich(periodeA, periodeB, regionCode, modus, aktor);
+    const schwelle = v.schwellwertProzent;
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Forecast-Portal';
+    const ws = wb.addWorksheet(`Vergleich ${regionCode}`, { views: [{ state: 'frozen', ySplit: 3 }] });
+
+    ws.mergeCells('A1:E1');
+    ws.getCell('A1').value = `Forecast-Vergleich ${regionCode} — größte Umsatzabweichungen je Land (kEUR)`;
+    ws.getCell('A1').font = { bold: true, size: 14, color: { argb: `FF${PRIMARY}` } };
+    const modusText = modus === 'YEE' ? 'Jahreserwartung (YEE)' : 'Nur Restmonate';
+    ws.getCell('A2').value = `Stand A: ${v.periodeA}   →   Stand B: ${v.periodeB}   ·   Basis: ${modusText}`;
+
+    const header = ['Land', `Stand A (${v.periodeA})`, `Stand B (${v.periodeB})`, '∆ (abs)', '∆ (%)'];
+    const hr = ws.addRow(header);
+    hr.eachCell((c) => {
+      c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${PRIMARY}` } };
+    });
+
+    const faerbeProzent = (cell: ExcelJS.Cell, proz: number | null): void => {
+      cell.numFmt = '0.0"%"';
+      if (proz === null) return;
+      if (proz >= schwelle) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${GRUEN}` } };
+      else if (proz <= -schwelle) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${ACCENT}` } };
+    };
+
+    for (const l of v.laender) {
+      const row = ws.addRow([l.landName, kEurWert(l.wertA), kEurWert(l.wertB), kEurWert(l.abweichungEur), l.abweichungProzent]);
+      for (let i = 2; i <= 4; i++) row.getCell(i).numFmt = '#,##0.0;[Red]-#,##0.0';
+      faerbeProzent(row.getCell(5), l.abweichungProzent);
+    }
+
+    const s = v.summe;
+    const totalRow = ws.addRow([`Region ${regionCode} — Gesamt`, kEurWert(s.wertA), kEurWert(s.wertB), kEurWert(s.abweichungEur), s.abweichungProzent]);
+    totalRow.eachCell((c) => (c.font = { bold: true }));
+    for (let i = 2; i <= 4; i++) totalRow.getCell(i).numFmt = '#,##0.0;[Red]-#,##0.0';
+    totalRow.getCell(5).numFmt = '0.0"%"';
+    ws.columns.forEach((col, i) => (col.width = i === 0 ? 26 : 16));
+
+    const arr = await wb.xlsx.writeBuffer();
+    return Buffer.from(arr);
+  }
+
   /**
    * Excel-Export der konsolidierten Monatssicht je Produktgruppe — Layout und Kennzahlen 1:1 wie die
    * App-Sicht (/konsolidierung): 2-zeiliger Gruppen-Header Actual / Forecast / FY, Monatsspalten,
