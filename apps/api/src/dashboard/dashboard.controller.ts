@@ -42,6 +42,13 @@ export class DashboardController {
     return this.service.kpi(this.j(jahr), aktor);
   }
 
+  /** Vertriebs-KPI je Region (mit AGM-Label): Zeitraum vs. Vorjahr & Budget, YEE, 3-Jahres-Achse. */
+  @Roles('VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN')
+  @Get('kpi-vertrieb')
+  kpiVertrieb(@Query('jahr') jahr: string, @Query('monatVon') monatVon: string, @Query('monatBis') monatBis: string, @CurrentUser() aktor: RequestUser) {
+    return this.service.kpiVertrieb(this.j(jahr), Number(monatVon) || 1, Number(monatBis) || 12, aktor);
+  }
+
   @Roles(...ALLE_ROLLEN)
   @Get('uebersicht')
   uebersicht(@CurrentUser() aktor: RequestUser) {

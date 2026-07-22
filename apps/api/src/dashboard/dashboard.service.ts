@@ -144,6 +144,176 @@ export class DashboardService {
     };
   }
 
+  /** GL-Ist je Region für einen Monatsbereich [von..bis]; im kumulierten YTD-Fall (von=1) offizielle Sales-Flash-Quelle. */
+  private async istZeitraumProRegion(
+    jahr: number,
+    monatVon: number,
+    monatBis: number,
+    scope: Scope,
+    offiziellWennYtd: boolean,
+  ): Promise<{ ist: Map<string, number>; quelle: Map<string, 'SALES_FLASH' | 'GL'> }> {
+    const ist = new Map<string, number>();
+    const quelle = new Map<string, 'SALES_FLASH' | 'GL'>();
+    if (monatBis < monatVon) return { ist, quelle };
+    const ksts = await this.prisma.kostenstelle.findMany({ select: { id: true, regionCode: true } });
+    const regByKst = new Map(ksts.map((k) => [k.id, k.regionCode]));
+    const where: Prisma.IstUmsatzWhereInput = { jahr, monat: { gte: monatVon, lte: monatBis } };
+    if (!scope.unbeschraenkt) where.kostenstelleId = { in: scope.kostenstelleIds.length ? scope.kostenstelleIds : ['__none__'] };
+    const grp = await this.prisma.istUmsatz.groupBy({ by: ['kostenstelleId'], where, _sum: { wertEur: true } });
+    for (const g of grp) {
+      const rc = regByKst.get(g.kostenstelleId);
+      if (rc) ist.set(rc, (ist.get(rc) ?? 0) + Number(g._sum.wertEur ?? 0));
+    }
+    for (const k of ist.keys()) quelle.set(k, 'GL');
+    if (offiziellWennYtd && monatVon === 1) {
+      const { quelle: q } = await this.istEinstellungen();
+      if (q === 'SALES_FLASH') {
+        const sf = await this.salesFlashIstProRegion(jahr, scope.unbeschraenkt ? null : scope.regionCodes, monatBis);
+        for (const [rc, eur] of sf) {
+          ist.set(rc, eur);
+          quelle.set(rc, 'SALES_FLASH');
+        }
+      }
+    }
+    return { ist, quelle };
+  }
+
+  /** Budget (AKTIV) je Region für einen Monatsbereich [von..bis]. */
+  private async budgetZeitraumProRegion(jahr: number, monatVon: number, monatBis: number, scope: Scope): Promise<Map<string, number>> {
+    const where: Prisma.BudgetWhereInput = { jahr, status: 'AKTIV', monat: { gte: monatVon, lte: monatBis } };
+    if (!scope.unbeschraenkt) where.regionCode = { in: scope.regionCodes.length ? scope.regionCodes : ['__none__'] };
+    const grp = await this.prisma.budget.groupBy({ by: ['regionCode'], where, _sum: { wertEur: true } });
+    return new Map(grp.map((g) => [g.regionCode, Number(g._sum.wertEur ?? 0)]));
+  }
+
+  /** GL-Ist-Summe je Monat (1..12) über den Scope. */
+  private async istProMonat(jahr: number, scope: Scope): Promise<Map<number, number>> {
+    const where: Prisma.IstUmsatzWhereInput = { jahr };
+    if (!scope.unbeschraenkt) where.kostenstelleId = { in: scope.kostenstelleIds.length ? scope.kostenstelleIds : ['__none__'] };
+    const grp = await this.prisma.istUmsatz.groupBy({ by: ['monat'], where, _sum: { wertEur: true } });
+    return new Map(grp.map((g) => [g.monat, Number(g._sum.wertEur ?? 0)]));
+  }
+
+  /** Budget-Summe (AKTIV) je Monat (1..12) über den Scope. */
+  private async budgetProMonat(jahr: number, scope: Scope): Promise<Map<number, number>> {
+    const where: Prisma.BudgetWhereInput = { jahr, status: 'AKTIV', monat: { not: null } };
+    if (!scope.unbeschraenkt) where.regionCode = { in: scope.regionCodes.length ? scope.regionCodes : ['__none__'] };
+    const grp = await this.prisma.budget.groupBy({ by: ['monat'], where, _sum: { wertEur: true } });
+    const m = new Map<number, number>();
+    for (const g of grp) if (g.monat != null) m.set(g.monat, Number(g._sum.wertEur ?? 0));
+    return m;
+  }
+
+  /**
+   * Vertriebs-KPI je Region (mit AGM-Label): Ist im gewählten Zeitraum vs. Vorjahr (YoY) und vs. Budget (Zielerreichung),
+   * YEE + Budget-Ausschöpfung, plus 3-Jahres-Achse (Ist & Budget). Vergleich fair bis zum letzten vollen Ist-Monat.
+   */
+  async kpiVertrieb(jahr: number, monatVon: number, monatBis: number, aktor: RequestUser) {
+    const scope = await this.scope.getScope(aktor);
+    const { aktJahr, aktMonat, istGrenze } = this.stichtag(jahr);
+    const letzterVoll = jahr < aktJahr ? 12 : jahr > aktJahr ? 0 : istGrenze - 1;
+    const von = Math.max(1, Math.min(monatVon, 12));
+    const bis = Math.max(von, Math.min(monatBis, 12));
+    const bisEff = Math.min(bis, letzterVoll); // Vergleich nur über volle Ist-Monate
+
+    const [istJ, istVj, istVvj, istYtd] = await Promise.all([
+      this.istZeitraumProRegion(jahr, von, bisEff, scope, true),
+      this.istZeitraumProRegion(jahr - 1, von, bisEff, scope, false),
+      this.istZeitraumProRegion(jahr - 2, von, bisEff, scope, false),
+      this.istZeitraumProRegion(jahr, 1, letzterVoll, scope, true), // volles YTD für YEE
+    ]);
+    const [budZeit, budJ, budVj, budVvj] = await Promise.all([
+      this.budgetZeitraumProRegion(jahr, von, bis, scope),
+      this.budgetZeitraumProRegion(jahr, 1, 12, scope),
+      this.budgetZeitraumProRegion(jahr - 1, 1, 12, scope),
+      this.budgetZeitraumProRegion(jahr - 2, 1, 12, scope),
+    ]);
+    const fcByRegion = await this.forecastRestProRegion(jahr, scope, istGrenze);
+
+    const [istMonJ, istMonVj, budMon] = await Promise.all([
+      this.istProMonat(jahr, scope),
+      this.istProMonat(jahr - 1, scope),
+      this.budgetProMonat(jahr, scope),
+    ]);
+    const umsatzProMonat = Array.from({ length: 12 }, (_, i) => {
+      const m = i + 1;
+      return {
+        monat: m,
+        ist: m <= letzterVoll ? round2(istMonJ.get(m) ?? 0) : null, // nur volle Ist-Monate
+        vorjahr: round2(istMonVj.get(m) ?? 0),
+        budget: round2(budMon.get(m) ?? 0),
+      };
+    });
+
+    const heute = new Date();
+    const rv = await this.prisma.regionsVerantwortung.findMany({
+      where: { geloeschtAm: null, gueltigVon: { lte: heute }, OR: [{ gueltigBis: null }, { gueltigBis: { gte: heute } }], user: { rolle: 'AGM' } },
+      select: { regionCode: true, user: { select: { name: true } } },
+    });
+    const agmsByRegion = new Map<string, string[]>();
+    for (const v of rv) {
+      const arr = agmsByRegion.get(v.regionCode) ?? [];
+      if (!arr.includes(v.user.name)) arr.push(v.user.name);
+      agmsByRegion.set(v.regionCode, arr);
+    }
+
+    const regionen = await this.prisma.region.findMany({
+      where: { forecastRelevant: true, ...(scope.unbeschraenkt ? {} : { code: { in: scope.regionCodes.length ? scope.regionCodes : ['__none__'] } }) },
+      orderBy: { code: 'asc' },
+    });
+
+    const zeilen = regionen.map((r) => {
+      const ist = istJ.ist.get(r.code) ?? 0;
+      const vj = istVj.ist.get(r.code) ?? 0;
+      const vvj = istVvj.ist.get(r.code) ?? 0;
+      const budZ = budZeit.get(r.code) ?? 0;
+      const budJahr = budJ.get(r.code) ?? 0;
+      const yee = (istYtd.ist.get(r.code) ?? 0) + (fcByRegion.get(r.code) ?? 0);
+      return {
+        regionCode: r.code,
+        bezeichnung: r.bezeichnung,
+        agms: agmsByRegion.get(r.code) ?? [],
+        istZeitraum: round2(ist),
+        istVorjahr: round2(vj),
+        yoyEur: round2(ist - vj),
+        yoyProzent: vj === 0 ? null : round2(((ist - vj) / Math.abs(vj)) * 100),
+        budgetZeitraum: round2(budZ),
+        zielProzent: budZ === 0 ? null : round2((ist / budZ) * 100),
+        yee: round2(yee),
+        budgetJahr: round2(budJahr),
+        ausschoepfungProzent: budJahr === 0 ? null : round2((ist / budJahr) * 100),
+        ist3Jahre: { [jahr]: round2(ist), [jahr - 1]: round2(vj), [jahr - 2]: round2(vvj) } as Record<number, number>,
+        budget3Jahre: { [jahr]: round2(budJahr), [jahr - 1]: round2(budVj.get(r.code) ?? 0), [jahr - 2]: round2(budVvj.get(r.code) ?? 0) } as Record<number, number>,
+        istQuelle: istJ.quelle.get(r.code) ?? 'GL',
+      };
+    });
+
+    const s = (f: (z: (typeof zeilen)[number]) => number): number => round2(zeilen.reduce((a, z) => a + f(z), 0));
+    const gIst = s((z) => z.istZeitraum);
+    const gVj = s((z) => z.istVorjahr);
+    const gBudZ = s((z) => z.budgetZeitraum);
+    const gBudJ = s((z) => z.budgetJahr);
+    return {
+      jahr,
+      zeitraum: { von, bis, bisEffektiv: bisEff, letzterVollerMonat: letzterVoll },
+      stichtag: formatPeriode(aktJahr, aktMonat),
+      jahre: [jahr, jahr - 1, jahr - 2],
+      umsatzProMonat,
+      zeilen,
+      gesamt: {
+        istZeitraum: gIst,
+        istVorjahr: gVj,
+        yoyEur: round2(gIst - gVj),
+        yoyProzent: gVj === 0 ? null : round2(((gIst - gVj) / Math.abs(gVj)) * 100),
+        budgetZeitraum: gBudZ,
+        zielProzent: gBudZ === 0 ? null : round2((gIst / gBudZ) * 100),
+        yee: s((z) => z.yee),
+        budgetJahr: gBudJ,
+        ausschoepfungProzent: gBudJ === 0 ? null : round2((gIst / gBudJ) * 100),
+      },
+    };
+  }
+
   /**
    * Konsolidierte Monatssicht je Produktgruppe (E1) über alle Regionen im Scope, im Format der
    * Forecast-Monatsansicht: Ist je Monat (< istGrenze), Forecast je Monat (>= istGrenze) und Budget
