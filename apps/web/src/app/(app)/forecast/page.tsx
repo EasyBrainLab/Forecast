@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { keurAnzeige, keurEingabe, parseKeurEingabe } from '@/lib/zahl';
 import { Ampel, Button, Card, Input, keur, prozent } from '@/components/ui';
 import { PeriodenAktionen } from '@/components/perioden-aktionen';
 
@@ -41,7 +42,8 @@ export default function ForecastPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [sel, setSel] = useState<{ periode: string; regionCode: string } | null>(null);
-  const [edits, setEdits] = useState<Record<string, number>>({}); // key -> neuer Forecast-Gesamtwert
+  const [edits, setEdits] = useState<Record<string, number>>({}); // key -> neuer Forecast-Gesamtwert (voller EUR)
+  const [roh, setRoh] = useState<Record<string, string>>({}); // key -> Roh-Eingabe (kEUR-Text) während des Tippens
   const [kommentar, setKommentar] = useState('');
 
   const { data: perioden } = useQuery({ queryKey: ['meine'], queryFn: () => api.get<Periode[]>('/forecast/meine') });
@@ -87,6 +89,7 @@ export default function ForecastPage() {
     },
     onSuccess: () => {
       setEdits({});
+      setRoh({});
       setKommentar('');
       qc.invalidateQueries();
     },
@@ -191,13 +194,24 @@ export default function ForecastPage() {
                       <td className="p-2 text-right">
                         {editierbar ? (
                           <input
-                            type="number"
+                            type="text"
+                            inputMode="decimal"
                             className="w-28 rounded border border-gray-300 px-2 py-1 text-right text-sm focus:border-ez-primary focus:outline-none"
-                            value={Math.round(fcWert)}
-                            onChange={(e) => setEdits({ ...edits, [key]: Number(e.target.value) })}
+                            value={roh[key] ?? keurEingabe(fcWert)}
+                            onChange={(e) => {
+                              const s = e.target.value;
+                              setRoh({ ...roh, [key]: s });
+                              const kv = parseKeurEingabe(s);
+                              if (kv === null) {
+                                const { [key]: _drop, ...rest } = edits;
+                                setEdits(rest);
+                              } else {
+                                setEdits({ ...edits, [key]: Math.round(kv * 1000 * 100) / 100 });
+                              }
+                            }}
                           />
                         ) : (
-                          keur(z.forecastRest)
+                          keurAnzeige(z.forecastRest)
                         )}
                       </td>
                       <td className="p-2 text-right">{keur(z.istYtd + fcWert)}</td>

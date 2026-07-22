@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth';
 import { Button, Card } from '@/components/ui';
 import { PeriodenAktionen } from '@/components/perioden-aktionen';
 import { monKurz } from '@/lib/monate';
+import { keurAnzeige, keurEingabe, parseKeurEingabe } from '@/lib/zahl';
 
 interface Periode {
   id: string;
@@ -67,7 +68,12 @@ export default function ForecastMonatlichPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [sel, setSel] = useState<{ periode: string; regionCode: string } | null>(null);
-  const [edits, setEdits] = useState<Record<string, number>>({}); // key land|e1|periode -> EUR
+  const [edits, setEdits] = useState<Record<string, number>>({}); // key land|e1|periode -> kEUR (Eingabewert)
+  const [roh, setRoh] = useState<Record<string, string>>({}); // key -> Roh-Eingabe (kEUR-Text) während des Tippens
+  const resetE = (): void => {
+    setEdits({});
+    setRoh({});
+  };
   const [ueberBegr, setUeberBegr] = useState(''); // Pflicht-Begründung der Leitungs-Überschreibung
 
   const { data: perioden } = useQuery({ queryKey: ['meine'], queryFn: () => api.get<Periode[]>('/forecast/meine') });
@@ -153,7 +159,7 @@ export default function ForecastMonatlichPage() {
   const anpassen = useMutation({
     mutationFn: () => api.post(`/forecast/${aktiv!.periode}/${aktiv!.regionCode}/anpassen`, { monatsModus: true, zellen: baueZellen() }),
     onSuccess: () => {
-      setEdits({});
+      resetE();
       qc.invalidateQueries();
     },
   });
@@ -162,7 +168,7 @@ export default function ForecastMonatlichPage() {
   const ueberschreiben = useMutation({
     mutationFn: () => api.post(`/forecast/${aktiv!.periode}/${aktiv!.regionCode}/ueberschreiben`, { begruendung: ueberBegr.trim(), monatsModus: false, zellen: baueZellen() }),
     onSuccess: () => {
-      setEdits({});
+      resetE();
       setUeberBegr('');
       qc.invalidateQueries();
     },
@@ -253,13 +259,13 @@ export default function ForecastMonatlichPage() {
       [...ps].sort((a, b) => monatNr(b.periode) - monatNr(a.periode))[0];
     if (ziel) {
       setSel({ periode: ziel.periode, regionCode: r });
-      setEdits({});
+      resetE();
     }
   };
   const waehlePeriode = (periode: string) => {
     if (!selRegion) return;
     setSel({ periode, regionCode: selRegion });
-    setEdits({});
+    resetE();
   };
 
   return (
@@ -453,22 +459,25 @@ export default function ForecastMonatlichPage() {
                           <td key={p} className={`border-l border-gray-100 p-0 text-right ${rot ? 'bg-ez-ampelRot/10' : geaendert ? 'bg-ez-primary/10' : 'bg-yellow-50/40'}`}>
                             {editierbar ? (
                               <input
-                                type="number"
-                                className={`w-14 bg-transparent px-1 py-1 text-right tabular-nums focus:outline-none ${zellText}`}
-                                value={edits[key] !== undefined ? edits[key] : Math.round(f / 1000)}
+                                type="text"
+                                inputMode="decimal"
+                                className={`w-16 bg-transparent px-1 py-1 text-right tabular-nums focus:outline-none ${zellText}`}
+                                value={roh[key] ?? keurEingabe(f)}
                                 onChange={(e) => {
-                                  const v = e.target.value;
-                                  if (v === '') {
-                                    // Leeres Feld != 0 EUR: Edit verwerfen, Budget-Default bleibt aktiv.
+                                  const s = e.target.value;
+                                  setRoh({ ...roh, [key]: s });
+                                  const kv = parseKeurEingabe(s);
+                                  if (kv === null) {
+                                    // Leeres/ungültiges Feld != 0 EUR: Edit verwerfen, Budget-Default bleibt aktiv.
                                     const { [key]: _drop, ...rest } = edits;
                                     setEdits(rest);
                                   } else {
-                                    setEdits({ ...edits, [key]: Number(v) });
+                                    setEdits({ ...edits, [key]: kv });
                                   }
                                 }}
                               />
                             ) : (
-                              <span className={`px-1 py-1 ${zellText}`}>{f ? f0(f) : ''}</span>
+                              <span className={`px-1 py-1 ${zellText}`}>{f ? keurAnzeige(f) : ''}</span>
                             )}
                           </td>
                         );
@@ -512,7 +521,7 @@ export default function ForecastMonatlichPage() {
                 <Button onClick={() => anpassen.mutate()} disabled={anpassen.isPending}>
                   {anpassen.isPending ? t('speichert') : t('speichern', { anzahl: editierteZellen.size })}
                 </Button>
-                <Button variant="ghost" onClick={() => setEdits({})}>
+                <Button variant="ghost" onClick={() => resetE()}>
                   {t('verwerfen')}
                 </Button>
               </div>
@@ -556,7 +565,7 @@ export default function ForecastMonatlichPage() {
                 <Button
                   variant="ghost"
                   onClick={() => {
-                    setEdits({});
+                    resetE();
                     setUeberBegr('');
                   }}
                 >
