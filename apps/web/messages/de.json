@@ -161,6 +161,13 @@
   },
   "forecastMonat": {
     "titel": "Forecast — Monatssicht (Produktgruppe / Land)",
+    "kEurHinweis": "Werte in Tausend € (kEUR)",
+    "neueZeile": "Neue Zeile",
+    "land": "Land",
+    "bitteWaehlen": "Bitte wählen…",
+    "anlegen": "Anlegen",
+    "legtAn": "Legt an…",
+    "neueZeileHinweis": "Land und Produktgruppe wählen. Die Kombination muss neu sein; die Zeile startet mit 0 und kann direkt befüllt werden.",
     "beschreibung": "Abgeschlossene Monate = <b>Actual</b> (realisierte Umsätze), offene Monate = <b>Forecast</b> (aus Budget vorbelegt, überschreibbar). Werte in <b>kEUR</b> (Tausend EUR). Geänderte Felder werden farblich markiert (blau = angepasst, rot = Abweichung > {schwelle} %). Eine Begründung ist nicht nötig — beim Bestätigen kann optional eine kurze Stellungnahme hinterlegt werden.",
     "keinePeriode": "Es ist noch keine Forecast-Periode geöffnet.",
     "monatsSchwellwert": "Monats-Schwellwert {schwelle} %",

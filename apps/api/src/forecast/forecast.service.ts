@@ -117,6 +117,40 @@ export class ForecastService {
     }
   }
 
+  /**
+   * Legt eine neue Forecast-Zeile (Land × Produktgruppe) in einer OFFENEN Periode an (Startwerte 0 je Restmonat).
+   * Konsistenz: Periode offen, Land & Produktgruppe müssen existieren, die Kombination darf noch nicht vorhanden sein.
+   */
+  async neueZeile(periode: string, regionCode: string, landId: string, e1Id: string, aktor: RequestUser): Promise<void> {
+    await this.assertSchreib(aktor, regionCode);
+    const p = await this.ladePeriode(periode, regionCode);
+    if (p.status !== ForecastStatus.OFFEN) throw new ConflictException('Neue Zeilen sind nur in einer offenen Periode möglich.');
+    const { jahr, monat, monate } = this.restMonate(periode);
+    const [land, e1] = await Promise.all([
+      this.prisma.land.findUnique({ where: { isoCode: landId } }),
+      this.prisma.produktgruppeE1.findUnique({ where: { id: e1Id } }),
+    ]);
+    if (!land) throw new BadRequestException('Unbekanntes Land.');
+    if (!e1) throw new BadRequestException('Unbekannte Produktgruppe.');
+    const vorhanden = await this.latestVersionen(this.prisma, periode, regionCode);
+    if (vorhanden.some((v) => v.landId === landId && v.e1Id === e1Id)) {
+      throw new ConflictException('Diese Kombination aus Produktgruppe und Land ist bereits vorhanden.');
+    }
+    const mw: MonatswerteRest = {};
+    for (const m of monate) mw[formatPeriode(jahr, m)] = { eur: 0, units: null };
+    const created = await this.prisma.forecastVersion.create({
+      data: { periode, jahr, monat, regionCode, landId, e1Id, monatswerteRest: mw as unknown as Prisma.InputJsonValue, status: ForecastStatus.OFFEN, version: 1, userId: aktor.id },
+    });
+    await this.audit.write({
+      entitaet: 'ForecastVersion',
+      entitaetId: created.id,
+      aktion: 'CREATE',
+      userId: aktor.id,
+      userEmail: aktor.email,
+      metadaten: { periode, regionCode, landId, e1Id, aktion: 'NEUE_ZEILE' },
+    });
+  }
+
   private async budgetRestProCell(jahr: number, regionCode: string, monate: number[]): Promise<Map<string, MonatswerteRest>> {
     const budgets = await this.prisma.budget.findMany({
       where: { jahr, regionCode, monat: { in: monate }, status: 'AKTIV', istRegionsreserve: false, landId: { not: null } },

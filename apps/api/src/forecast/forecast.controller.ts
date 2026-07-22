@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ALLE_ROLLEN, Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, type RequestUser } from '../common/decorators/current-user.decorator';
 import { ForecastService } from './forecast.service';
-import { AnpassenDto, BestaetigenDto, OeffnePeriodeDto, UeberschreibenDto, VergleichQueryDto, WiederOeffnenDto, ZurueckweisenDto } from './forecast.dto';
+import { AnpassenDto, BestaetigenDto, NeueZeileDto, OeffnePeriodeDto, UeberschreibenDto, VergleichQueryDto, WiederOeffnenDto, ZurueckweisenDto } from './forecast.dto';
 import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('forecast')
@@ -61,6 +61,13 @@ export class ForecastController {
   @Post(':periode/:regionCode/anpassen')
   anpassen(@Param('periode') periode: string, @Param('regionCode') regionCode: string, @Body() dto: AnpassenDto, @CurrentUser() aktor: RequestUser) {
     return this.service.anpassen(periode, regionCode, aktor, dto);
+  }
+
+  /** Neue Forecast-Zeile (Land × Produktgruppe) in einer offenen Periode anlegen. */
+  @Roles('AGM', 'VERTRIEBSLEITER', 'BU_LEITER')
+  @Post(':periode/:regionCode/zeile')
+  neueZeile(@Param('periode') periode: string, @Param('regionCode') regionCode: string, @Body() dto: NeueZeileDto, @CurrentUser() aktor: RequestUser) {
+    return this.service.neueZeile(periode, regionCode, dto.landId, dto.e1Id, aktor);
   }
 
   /** Fertiggemeldeten Forecast (BESTAETIGT/ANGEPASST) auf OFFEN zurücksetzen — Leitung + Admin, Begründung Pflicht. */

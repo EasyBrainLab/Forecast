@@ -46,8 +46,8 @@ interface Matrix {
 
 const monatNr = (p: string) => Number(p.slice(5));
 const ek = (landId: string, e1Id: string, p: string) => `${landId}|${e1Id}|${p}`;
-// Anzeige in kEUR (Tausend EUR), ganzzahlig, mit Tausenderpunkt: 300.500 € -> "301", 1.209.500 € -> "1.210".
-const f0 = (v: number) => Math.round(v / 1000).toLocaleString('de-DE');
+// Anzeige in kEUR (Tausend EUR) mit Dezimalstellen (EUR-genau, bis 3 Nachkommastellen), mit Tausenderpunkt.
+const f0 = (v: number) => keurAnzeige(v);
 
 // Statusfarbe für Zeitleisten-Punkt und Status-Pill (abgeschlossen=grün, offen=gelb, zurückgewiesen=rot, eingereicht=blau).
 const statusDot = (s: string): string =>
@@ -195,6 +195,30 @@ export default function ForecastMonatlichPage() {
       setExportBusy(false);
     }
   };
+
+  // Neue Forecast-Zeile (Land × Produktgruppe) anlegen — nur in offener, editierbarer Periode.
+  const [neueZeileOffen, setNeueZeileOffen] = useState(false);
+  const [neuLand, setNeuLand] = useState('');
+  const [neuE1, setNeuE1] = useState('');
+  const { data: laender } = useQuery({
+    queryKey: ['stammdaten-laender'],
+    queryFn: () => api.get<{ isoCode: string; nameDe: string }[]>('/stammdaten/laender'),
+    enabled: neueZeileOffen,
+  });
+  const { data: produktgruppen } = useQuery({
+    queryKey: ['stammdaten-produktgruppen'],
+    queryFn: () => api.get<{ e1: { id: string; nameDe: string }[] }>('/stammdaten/produktgruppen'),
+    enabled: neueZeileOffen,
+  });
+  const neueZeile = useMutation({
+    mutationFn: () => api.post(`/forecast/${aktiv!.periode}/${aktiv!.regionCode}/zeile`, { landId: neuLand, e1Id: neuE1 }),
+    onSuccess: () => {
+      setNeueZeileOffen(false);
+      setNeuLand('');
+      setNeuE1('');
+      qc.invalidateQueries();
+    },
+  });
 
   // Sortierung E1 -> Land + Gruppen-Markierung (E1-Label nur in erster Zeile der Gruppe).
   const zeilen = useMemo(() => {
@@ -363,6 +387,7 @@ export default function ForecastMonatlichPage() {
                 {matrix.regionCode} · {matrix.periode}
               </span>
               <span className={`ml-2 rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusPill(matrix.status)}`}>{matrix.status}</span>
+              <span className="ml-2 inline-block rounded bg-ez-accent px-2 py-0.5 text-xs font-bold text-white">{t('kEurHinweis')}</span>
               <span className="ml-2 text-xs text-gray-400">{t('monatsSchwellwert', { schwelle })}</span>
             </div>
             <div className="flex flex-wrap items-start gap-2">
@@ -400,6 +425,57 @@ export default function ForecastMonatlichPage() {
           {/* Leitung überschreibt einen bereits fertiggemeldeten Forecast. */}
           {leitungUeberschreibt && (
             <div className="rounded-lg border border-ez-primary/40 bg-ez-primary/5 p-3 text-sm text-ez-primary">{t('ueberschreibHinweis')}</div>
+          )}
+
+          {/* Neue Forecast-Zeile (Land × Produktgruppe) — nur in offener Periode. */}
+          {offenBearbeitbar && (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+              {!neueZeileOffen ? (
+                <Button variant="ghost" onClick={() => setNeueZeileOffen(true)}>
+                  + {t('neueZeile')}
+                </Button>
+              ) : (
+                <div className="flex flex-wrap items-end gap-3">
+                  <label className="text-sm">
+                    <div className="mb-1 text-gray-500">{t('spalteProduktgruppe')}</div>
+                    <select className="rounded border px-2 py-1" value={neuE1} onChange={(e) => setNeuE1(e.target.value)}>
+                      <option value="">{t('bitteWaehlen')}</option>
+                      {produktgruppen?.e1.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.nameDe}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-sm">
+                    <div className="mb-1 text-gray-500">{t('land')}</div>
+                    <select className="rounded border px-2 py-1" value={neuLand} onChange={(e) => setNeuLand(e.target.value)}>
+                      <option value="">{t('bitteWaehlen')}</option>
+                      {laender?.map((l) => (
+                        <option key={l.isoCode} value={l.isoCode}>
+                          {l.nameDe}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <Button onClick={() => neueZeile.mutate()} disabled={!neuLand || !neuE1 || neueZeile.isPending}>
+                    {neueZeile.isPending ? t('legtAn') : t('anlegen')}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setNeueZeileOffen(false);
+                      setNeuLand('');
+                      setNeuE1('');
+                    }}
+                  >
+                    {t('abbrechen')}
+                  </Button>
+                  {neueZeile.isError && <span className="text-xs text-ez-accent">✗ {(neueZeile.error as Error).message}</span>}
+                </div>
+              )}
+              <p className="mt-2 text-xs text-gray-400">{t('neueZeileHinweis')}</p>
+            </div>
           )}
 
           <div className="overflow-x-auto">
