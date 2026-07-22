@@ -161,6 +161,13 @@
   },
   "forecastMonat": {
     "titel": "Forecast — monthly view (product line / country)",
+    "kEurHinweis": "Values in thousand € (kEUR)",
+    "neueZeile": "New row",
+    "land": "Country",
+    "bitteWaehlen": "Please select…",
+    "anlegen": "Add",
+    "legtAn": "Adding…",
+    "neueZeileHinweis": "Select country and product line. The combination must be new; the row starts at 0 and can be filled in directly.",
     "beschreibung": "Closed months = <b>actuals</b> (realized revenue), open months = <b>forecast</b> (pre-filled from budget, editable). Values in <b>kEUR</b> (thousand EUR). Changed fields are highlighted (blue = adjusted, red = variance > {schwelle} %). No justification required — an optional short statement can be added when confirming.",
     "keinePeriode": "No forecast period has been opened yet.",
     "monatsSchwellwert": "Monthly threshold {schwelle} %",

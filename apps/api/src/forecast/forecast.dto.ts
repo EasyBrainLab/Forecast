@@ -117,6 +117,19 @@ export class OeffnePeriodeDto {
   regionCode?: string;
 }
 
+/** Neue Forecast-Zeile: Land × Produktgruppe (E1). */
+export class NeueZeileDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(10)
+  landId!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(64)
+  e1Id!: string;
+}
+
 /** Vergleich zweier Forecast-Stände (Perioden) einer Region. */
 export class VergleichQueryDto {
   @Matches(/^\d{4}-\d{2}$/)
