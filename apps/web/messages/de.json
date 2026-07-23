@@ -161,6 +161,7 @@
   },
   "forecastMonat": {
     "titel": "Forecast — Monatssicht (Produktgruppe / Land)",
+    "zuRohdaten": "Zu den Rohdaten springen (Ist-Buchungen filtern)",
     "kEurHinweis": "Werte in Tausend € (kEUR)",
     "neueZeile": "Neue Zeile",
     "land": "Land",

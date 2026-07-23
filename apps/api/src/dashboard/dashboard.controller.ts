@@ -62,11 +62,12 @@ export class DashboardController {
     @Query('regionCode') regionCode: string | undefined,
     @Query('landId') landId: string | undefined,
     @Query('e1Id') e1Id: string | undefined,
+    @Query('monat') monat: string | undefined,
     @Query('page') page: string | undefined,
     @Query('pageSize') pageSize: string | undefined,
     @CurrentUser() aktor: RequestUser,
   ) {
-    return this.service.istDaten(this.j(jahr), aktor, { regionCode, landId, e1Id }, Number(page) || 1, Number(pageSize) || 50);
+    return this.service.istDaten(this.j(jahr), aktor, { regionCode, landId, e1Id, monat: monat ? Number(monat) : undefined }, Number(page) || 1, Number(pageSize) || 50);
   }
 
   @Roles(...ALLE_ROLLEN)

@@ -575,12 +575,13 @@ export class DashboardService {
   }
 
   // ─────────────── Rohdaten-Browser (paginiert, scoped) ───────────────
-  async istDaten(jahr: number, aktor: RequestUser, filter: { regionCode?: string; landId?: string; e1Id?: string }, page = 1, pageSize = 50) {
+  async istDaten(jahr: number, aktor: RequestUser, filter: { regionCode?: string; landId?: string; e1Id?: string; monat?: number }, page = 1, pageSize = 50) {
     const scope = await this.scope.getScope(aktor);
-    const ps = Math.min(Math.max(pageSize, 1), 200);
+    const ps = Math.min(Math.max(pageSize, 1), 20000); // hoher Deckel: die Rohdaten-Liste lädt einen Jahres-/Filter-Ausschnitt komplett (clientseitige Excel-Tabelle)
     const where: Prisma.IstUmsatzWhereInput = { jahr };
     if (filter.landId) where.landId = filter.landId;
     if (filter.e1Id) where.e1Id = filter.e1Id;
+    if (filter.monat) where.monat = filter.monat;
     let kstIds: string[] | null = scope.unbeschraenkt ? null : scope.kostenstelleIds;
     if (filter.regionCode) {
       const ksts = await this.prisma.kostenstelle.findMany({ where: { regionCode: filter.regionCode }, select: { id: true } });
@@ -624,7 +625,7 @@ export class DashboardService {
 
   async budgetDaten(jahr: number, aktor: RequestUser, filter: { regionCode?: string }, page = 1, pageSize = 50) {
     const scope = await this.scope.getScope(aktor);
-    const ps = Math.min(Math.max(pageSize, 1), 200);
+    const ps = Math.min(Math.max(pageSize, 1), 20000); // hoher Deckel: clientseitige Excel-Tabelle lädt den Jahres-/Filter-Ausschnitt komplett
     const where: Prisma.BudgetWhereInput = { jahr, status: 'AKTIV' };
     if (filter.regionCode) where.regionCode = filter.regionCode;
     if (!scope.unbeschraenkt) where.regionCode = { in: scope.regionCodes.length ? scope.regionCodes : ['__none__'] };

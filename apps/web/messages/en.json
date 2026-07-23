@@ -161,6 +161,7 @@
   },
   "forecastMonat": {
     "titel": "Forecast — monthly view (product line / country)",
+    "zuRohdaten": "Jump to raw data (filter actual bookings)",
     "kEurHinweis": "Values in thousand € (kEUR)",
     "neueZeile": "New row",
     "land": "Country",

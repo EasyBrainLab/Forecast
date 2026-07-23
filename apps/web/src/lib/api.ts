@@ -36,8 +36,9 @@ async function request<T>(method: string, pfad: string, body?: unknown): Promise
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
-    const msg = data?.message ?? `Fehler ${res.status}`;
-    throw new ApiError(res.status, Array.isArray(msg) ? msg.join(', ') : String(msg));
+    const rawMsg = (data as { message?: unknown })?.message ?? `Fehler ${res.status}`;
+    const msg = Array.isArray(rawMsg) ? rawMsg.join(', ') : typeof rawMsg === 'string' ? rawMsg : `Fehler ${res.status}`;
+    throw new ApiError(res.status, msg);
   }
   return data as T;
 }
