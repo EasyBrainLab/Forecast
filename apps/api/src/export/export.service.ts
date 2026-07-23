@@ -120,6 +120,92 @@ export class ExportService {
     return Buffer.from(arr);
   }
 
+  /** Excel-Export der Vertriebs-KPI-Tabelle je Region (AGM-Label): Ist vs. Vorjahr & Budget, YEE, 3-Jahres-Ist (kEUR). */
+  async vertriebsKpiXlsx(jahr: number, monatVon: number, monatBis: number, aktor: RequestUser): Promise<Buffer> {
+    const k = await this.dashboard.kpiVertrieb(jahr, monatVon, monatBis, aktor);
+    const [j1, j2, j3] = k.jahre;
+    const schwelle = 10;
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Forecast-Portal';
+    const ws = wb.addWorksheet(`Vertriebs-KPI ${jahr}`, { views: [{ state: 'frozen', ySplit: 3 }] });
+
+    ws.mergeCells('A1:N1');
+    ws.getCell('A1').value = `Vertriebs-KPI ${jahr} — Zeitraum Monat ${k.zeitraum.von}–${k.zeitraum.bisEffektiv} vs. Vorjahr & Budget (kEUR)`;
+    ws.getCell('A1').font = { bold: true, size: 14, color: { argb: `FF${PRIMARY}` } };
+    ws.getCell('A2').value = `Stichtag: ${k.stichtag} · Vergleich bis Monat ${k.zeitraum.letzterVollerMonat}`;
+
+    const header = ['Region', 'AGM', 'Ist', 'Vorjahr', '∆ YoY', 'YoY %', 'Budget (ZR)', 'Ziel %', 'YEE', 'Budget Jahr', 'Aussch. %', `Ist ${j1}`, `Ist ${j2}`, `Ist ${j3}`];
+    const hr = ws.addRow(header);
+    hr.eachCell((c) => {
+      c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${PRIMARY}` } };
+    });
+
+    const eurCols = [3, 4, 5, 7, 9, 10, 12, 13, 14];
+    const yoyFarbe = (cell: ExcelJS.Cell, proz: number | null): void => {
+      cell.numFmt = '0.0"%"';
+      if (proz === null) return;
+      if (proz >= schwelle) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${GRUEN}` } };
+      else if (proz <= -schwelle) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${ACCENT}` } };
+    };
+    const zielFarbe = (cell: ExcelJS.Cell, proz: number | null): void => {
+      cell.numFmt = '0.0"%"';
+      if (proz === null) return;
+      if (proz >= 100) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${GRUEN}` } };
+      else if (proz < 90) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${ACCENT}` } };
+    };
+
+    for (const z of k.zeilen) {
+      const row = ws.addRow([
+        z.regionCode,
+        z.agms.join(', '),
+        kEurWert(z.istZeitraum),
+        kEurWert(z.istVorjahr),
+        kEurWert(z.yoyEur),
+        z.yoyProzent,
+        kEurWert(z.budgetZeitraum),
+        z.zielProzent,
+        kEurWert(z.yee),
+        kEurWert(z.budgetJahr),
+        z.ausschoepfungProzent,
+        kEurWert(z.ist3Jahre[j1] ?? 0),
+        kEurWert(z.ist3Jahre[j2] ?? 0),
+        kEurWert(z.ist3Jahre[j3] ?? 0),
+      ]);
+      for (const i of eurCols) row.getCell(i).numFmt = '#,##0.0;[Red]-#,##0.0';
+      yoyFarbe(row.getCell(6), z.yoyProzent);
+      zielFarbe(row.getCell(8), z.zielProzent);
+      row.getCell(11).numFmt = '0.0"%"';
+    }
+
+    const g = k.gesamt;
+    const sum3 = (y: number): number => k.zeilen.reduce((s, z) => s + (z.ist3Jahre[y] ?? 0), 0);
+    const totalRow = ws.addRow([
+      'BU-Gesamt',
+      '',
+      kEurWert(g.istZeitraum),
+      kEurWert(g.istVorjahr),
+      kEurWert(g.yoyEur),
+      g.yoyProzent,
+      kEurWert(g.budgetZeitraum),
+      g.zielProzent,
+      kEurWert(g.yee),
+      kEurWert(g.budgetJahr),
+      g.ausschoepfungProzent,
+      kEurWert(sum3(j1)),
+      kEurWert(sum3(j2)),
+      kEurWert(sum3(j3)),
+    ]);
+    totalRow.eachCell((c) => (c.font = { bold: true }));
+    for (const i of eurCols) totalRow.getCell(i).numFmt = '#,##0.0;[Red]-#,##0.0';
+    for (const i of [6, 8, 11]) totalRow.getCell(i).numFmt = '0.0"%"';
+
+    ws.columns.forEach((col, i) => (col.width = i === 1 ? 24 : 13));
+
+    const arr = await wb.xlsx.writeBuffer();
+    return Buffer.from(arr);
+  }
+
   /**
    * Excel-Export der konsolidierten Monatssicht je Produktgruppe — Layout und Kennzahlen 1:1 wie die
    * App-Sicht (/konsolidierung): 2-zeiliger Gruppen-Header Actual / Forecast / FY, Monatsspalten,
