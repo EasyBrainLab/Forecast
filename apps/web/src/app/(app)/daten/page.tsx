@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Card } from '@/components/ui';
 import { DataTable, type Column } from '@/components/data-table';
+import { QuellHinweis } from '@/components/quell-hinweis';
 import { monKurz } from '@/lib/monate';
 
 interface Region {
@@ -176,6 +177,7 @@ function DatenInhalt() {
           <DataTable columns={budgetCols} rows={budget.data?.items ?? []} rowKey={(r) => r.id} dicht globaleSuche spaltenWahl tabellenId="rohdaten-budget" leerText="Keine Budget-Zeilen für diese Filter." />
         )}
       </Card>
+      <QuellHinweis arten={tab === 'ist' ? ['ist'] : ['budget']} />
     </div>
   );
 }

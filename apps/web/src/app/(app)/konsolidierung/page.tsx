@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { api, downloadDatei } from '@/lib/api';
 import { Button, Card } from '@/components/ui';
 import Link from 'next/link';
+import { QuellHinweis } from '@/components/quell-hinweis';
 import { monKurz } from '@/lib/monate';
 
 interface Zeile {
@@ -211,6 +212,7 @@ export default function KonsolidierungPage() {
             </table>
           </div>
           <p className="text-xs text-gray-400">Werte in kEUR · Stichtag {data.stichtag}</p>
+          <QuellHinweis arten={['ist', 'budget']} />
         </Card>
       )}
     </div>

@@ -55,6 +55,13 @@ export class DashboardController {
     return this.service.uebersicht(aktor);
   }
 
+  /** Herkunfts-Metadaten (Dateiname + Datenstand) je Datenart für den Quelldatei-Hinweis. Nur Metadaten -> alle Rollen. */
+  @Roles(...ALLE_ROLLEN)
+  @Get('quellen')
+  quellen() {
+    return this.service.datenQuellen();
+  }
+
   @Roles(...ALLE_ROLLEN)
   @Get('ist-daten')
   istDaten(

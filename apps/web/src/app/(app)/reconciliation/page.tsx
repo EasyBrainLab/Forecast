@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, getToken } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Button, Card, keur } from '@/components/ui';
+import { QuellHinweis } from '@/components/quell-hinweis';
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 const MON = ['', 'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
@@ -235,6 +236,7 @@ export default function ReconciliationPage() {
             </table>
             {!recon.actualsErfasst && <p className="mt-2 text-xs text-gray-500">ℹ️ Noch keine Controlling-Actuals erfasst — bitte unten eintragen, dann erscheint das Delta.</p>}
             <p className="mt-3 rounded bg-gray-50 p-2 text-xs text-gray-600">{recon.hinweis}</p>
+            <QuellHinweis arten={['ist', 'salesFlash']} className="mt-2" />
           </>
         )}
       </Card>
