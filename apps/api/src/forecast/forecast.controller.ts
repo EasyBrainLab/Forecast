@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ALLE_ROLLEN, Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, type RequestUser } from '../common/decorators/current-user.decorator';
@@ -48,6 +48,13 @@ export class ForecastController {
       : (await this.prisma.region.findMany({ where: { forecastRelevant: true }, select: { code: true } })).map((r) => r.code);
     for (const regionCode of regionen) await this.service.oeffnePeriode(dto.periode, regionCode, aktor);
     return { geoeffnet: regionen };
+  }
+
+  /** Versehentlich angelegte (noch OFFENE) Forecast-Periode einer Region löschen — AGM sieht sie danach nicht mehr. */
+  @Roles('ADMIN', 'BU_LEITER', 'VERTRIEBSLEITER')
+  @Delete(':periode/:regionCode')
+  loeschen(@Param('periode') periode: string, @Param('regionCode') regionCode: string, @CurrentUser() aktor: RequestUser) {
+    return this.service.loeschePeriode(periode, regionCode, aktor);
   }
 
   @Roles('AGM')
