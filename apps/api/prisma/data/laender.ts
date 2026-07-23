@@ -50,6 +50,7 @@ export const LAENDER: readonly LandSeed[] = [
   { isoCode: 'LV', nameDe: 'Lettland', nameEn: 'Latvia' },
   { isoCode: 'MA', nameDe: 'Marokko', nameEn: 'Morocco' },
   { isoCode: 'MN', nameDe: 'Mongolei', nameEn: 'Mongolia' },
+  { isoCode: 'MX', nameDe: 'Mexiko', nameEn: 'Mexico' },
   { isoCode: 'MY', nameDe: 'Malaysia', nameEn: 'Malaysia' },
   { isoCode: 'NL', nameDe: 'Niederlande', nameEn: 'Netherlands' },
   { isoCode: 'NO', nameDe: 'Norwegen', nameEn: 'Norway' },
