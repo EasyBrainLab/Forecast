@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Reihenfolge, in der die Import-Arten in der Datenstand-Übersicht erscheinen. */
-const TYP_REIHENFOLGE = ['IST', 'BUDGET', 'ABSATZ', 'LIEFERMENGE', 'KUNDENSTAMM', 'RECHNUNG', 'RECHNUNGSPOSITION'] as const;
+const TYP_REIHENFOLGE = ['IST', 'BUDGET', 'ABSATZ', 'LIEFERMENGE', 'PL_KOSTEN', 'KUNDENSTAMM', 'RECHNUNG', 'RECHNUNGSPOSITION'] as const;
 
 @Injectable()
 export class ImportUebersichtService {

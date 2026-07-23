@@ -24,6 +24,7 @@ import { ExportModule } from './export/export.module';
 import { StammdatenModule } from './stammdaten/stammdaten.module';
 import { AbsatzModule } from './absatz/absatz.module';
 import { LiefermengeModule } from './liefermenge/liefermenge.module';
+import { PlKostenModule } from './pl-kosten/pl-kosten.module';
 import { AgmStatementModule } from './agm-statement/agm-statement.module';
 import { SalesFlashModule } from './sales-flash/sales-flash.module';
 import { PeriodeModule } from './periode/periode.module';
@@ -63,6 +64,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
     StammdatenModule,
     AbsatzModule,
     LiefermengeModule,
+    PlKostenModule,
     AgmStatementModule,
     SalesFlashModule,
     PeriodeModule,

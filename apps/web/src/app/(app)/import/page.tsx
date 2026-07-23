@@ -44,6 +44,7 @@ const TYP_LABEL: Record<string, string> = {
   BUDGET: 'Budget',
   ABSATZ: 'Absatz / Stückzahlen',
   LIEFERMENGE: 'Liefermengen (SOL)',
+  PL_KOSTEN: 'P&L-Kosten (Controlling)',
   KUNDENSTAMM: 'Kundenstamm (D365)',
   RECHNUNG: 'Rechnungsköpfe (D365)',
   RECHNUNGSPOSITION: 'Rechnungspositionen (D365)',
@@ -327,6 +328,12 @@ export default function ImportPage() {
         beschreibung="Zeilenscharfe SalesOrder-Lineitems (ERP-Export SOL). Liefermonat aus Shipping_Date; Voll-Ersatz je enthaltenem Monat — mehrfacher Upload derselben Datei ist unschädlich."
         endpoint="/liefermenge/import"
         accept=".csv"
+      />
+      <ImportKachel
+        titel="P&L-Kosten (Controlling-Excel)"
+        beschreibung="Forecast JJJJ.MM Therapy.xlsx — COGS & Other Costs (Actual + Budget), BU-gesamt je Monat, für die EBIT-Sicht in der Konsolidierung. Voll-Ersatz je Jahr; Jahr aus dem Dateinamen."
+        endpoint="/pl-kosten/import"
+        accept=".xlsx"
       />
 
       <div className="pt-2">

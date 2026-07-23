@@ -41,6 +41,13 @@ enum E1Kategorie {
 
 enum KennzahlTyp {
   REVENUE
+  COGS // Herstellkosten (P&L)
+  OTHER_COSTS // Gemeinkosten (P&L)
+}
+
+enum PlArt {
+  ACTUAL
+  BUDGET
 }
 
 enum BudgetStatus {
@@ -457,6 +464,7 @@ model ImportBatch {
   rechnungen    Verkaufsrechnung[]
   positionen    Verkaufsrechnungsposition[]
   liefermengen  Liefermenge[]
+  plKosten      PlKosten[]
 
   @@index([hash])
   @@index([status])
@@ -805,6 +813,25 @@ model SalesFlashDetail {
   @@unique([jahr, monat, regionCode, e1Id, landId, periodenMonat])
   @@index([jahr, monat, regionCode])
   @@map("sales_flash_detail")
+}
+
+/// BU-Gesamt-Kosten (COGS, Other Costs) je Monat für die P&L/EBIT-Sicht. Ist + Budget aus der Controlling-Excel
+/// importiert (voller EUR, signiert negativ). Voll-Ersatz je Jahr beim Import. Kein Produkt-/Regionsbezug.
+model PlKosten {
+  id            String      @id @default(uuid())
+  jahr          Int
+  monat         Int // 1..12
+  art           PlArt // ACTUAL | BUDGET
+  kennzahlTyp   KennzahlTyp // COGS | OTHER_COSTS
+  eur           Decimal     @db.Decimal(15, 2) // voller EUR, Kosten negativ
+  importBatchId String?
+  erstelltAm    DateTime    @default(now())
+
+  importBatch ImportBatch? @relation(fields: [importBatchId], references: [id])
+
+  @@unique([jahr, monat, art, kennzahlTyp])
+  @@index([jahr])
+  @@map("pl_kosten")
 }
 
 // ─────────────── TENDER / AUSSCHREIBUNGEN (fristen-getrieben; Reminder via Scheduler) ───────────────
