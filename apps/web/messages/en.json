@@ -599,6 +599,7 @@
   "vertriebsKpi": {
     "titel": "Sales KPIs",
     "untertitel": "Revenue per AGM/region: actual vs. prior year & budget, YEE, 3-year comparison",
+    "exportExcel": "Excel export",
     "jahr": "Year",
     "von": "From",
     "bis": "To",

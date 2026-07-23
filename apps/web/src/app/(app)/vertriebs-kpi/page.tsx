@@ -3,8 +3,8 @@ import { type ReactElement, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import { Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { api } from '@/lib/api';
-import { Ampel, Card, keur, prozent } from '@/components/ui';
+import { api, downloadDatei } from '@/lib/api';
+import { Ampel, Button, Card, keur, prozent } from '@/components/ui';
 import { monKurz } from '@/lib/monate';
 
 const VORJAHR = '#9CA3AF';
@@ -117,9 +117,19 @@ export default function VertriebsKpiPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold text-ez-primary">{t('titel')}</h1>
-        <p className="mt-1 text-sm text-gray-500">{t('untertitel')}</p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-bold text-ez-primary">{t('titel')}</h1>
+          <p className="mt-1 text-sm text-gray-500">{t('untertitel')}</p>
+        </div>
+        {data && (
+          <Button
+            variant="ghost"
+            onClick={() => downloadDatei(`/export/vertriebs-kpi?jahr=${jahr}&monatVon=${von}&monatBis=${bis}`, 'GET', `vertriebs-kpi-${jahr}.xlsx`)}
+          >
+            {t('exportExcel')}
+          </Button>
+        )}
       </div>
 
       <Card className="p-4">

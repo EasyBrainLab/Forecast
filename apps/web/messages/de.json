@@ -599,6 +599,7 @@
   "vertriebsKpi": {
     "titel": "Vertriebs-KPI",
     "untertitel": "Umsatz je AGM/Region: Ist vs. Vorjahr & Budget, YEE, 3-Jahres-Vergleich",
+    "exportExcel": "Excel-Export",
     "jahr": "Jahr",
     "von": "Von",
     "bis": "Bis",

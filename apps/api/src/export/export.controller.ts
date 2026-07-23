@@ -37,6 +37,24 @@ export class ExportController {
     res.send(buf);
   }
 
+  /** Vertriebs-KPI-Tabelle je Region als Excel. */
+  @Roles('VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN')
+  @Get('vertriebs-kpi')
+  async vertriebsKpi(
+    @Query('jahr') jahr: string,
+    @Query('monatVon') monatVon: string,
+    @Query('monatBis') monatBis: string,
+    @CurrentUser() aktor: RequestUser,
+    @Res() res: Response,
+  ): Promise<void> {
+    const buf = await this.service.vertriebsKpiXlsx(this.jahr(jahr), Number(monatVon) || 1, Number(monatBis) || 12, aktor);
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="vertriebs-kpi-${this.jahr(jahr)}.xlsx"`,
+    });
+    res.send(buf);
+  }
+
   /** Eigene Forecast-Matrix (Land × Produktgruppe) einer Region/Periode als Excel — für AGM zum Archivieren. */
   @Roles(...ALLE_ROLLEN)
   @Get('forecast-matrix')
