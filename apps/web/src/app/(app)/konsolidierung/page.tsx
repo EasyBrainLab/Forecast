@@ -106,6 +106,9 @@ export default function KonsolidierungPage() {
             Umsatz je Produktgruppe über alle Regionen. Abgeschlossene Monate = <b>Actual</b>, offene Monate ={' '}
             <b>Forecast</b>. Werte in <b>kEUR</b>.
           </p>
+          <p className="mt-1 text-sm text-ez-primary">
+            🔎 <b>Drilldown:</b> Auf einen <b>Produktgruppen-Namen</b> (linke Spalte) oder einen <b>Ist-Monatswert</b> klicken, um zu den zugrunde liegenden Rohdaten-Buchungen zu springen.
+          </p>
         </div>
         <div className="text-right">
           <Button onClick={exportExcel} disabled={exportBusy || !data}>
@@ -158,7 +161,7 @@ export default function KonsolidierungPage() {
                   return (
                     <tr key={z.e1Id} className="border-t border-gray-100">
                       <td className="sticky left-0 z-10 w-[150px] bg-white p-1 font-semibold">
-                        <Link href={`/daten?tab=ist&jahr=${jahr}&e1Id=${z.e1Id}`} className="text-ez-primary hover:underline" title={t('zuRohdaten')}>
+                        <Link href={`/daten?tab=ist&jahr=${jahr}&e1Id=${z.e1Id}`} className="text-ez-primary underline decoration-dotted underline-offset-2 hover:decoration-solid" title={t('zuRohdaten')}>
                           {z.bezeichnung}
                         </Link>
                       </td>
