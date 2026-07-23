@@ -43,6 +43,21 @@ async function request<T>(method: string, pfad: string, body?: unknown): Promise
   return data as T;
 }
 
+/**
+ * Lädt eine Datei mit Bearer-Auth und gibt eine Object-URL für die Inline-Anzeige zurück
+ * (z. B. PDF in einem iframe). Der Aufrufer ist für URL.revokeObjectURL verantwortlich.
+ */
+export async function blobUrl(pfad: string): Promise<{ url: string; mimeType: string }> {
+  const token = getToken();
+  const res = await fetch(`${BASE}${pfad}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!res.ok) {
+    const msg = res.status === 401 ? 'Sitzung abgelaufen — bitte neu anmelden.' : res.status === 403 ? 'Keine Berechtigung für diese Datei.' : `Laden fehlgeschlagen (${res.status}).`;
+    throw new ApiError(res.status, msg);
+  }
+  const blob = await res.blob();
+  return { url: URL.createObjectURL(blob), mimeType: blob.type };
+}
+
 /** Lädt eine Datei mit Bearer-Auth herunter und stößt den Browser-Download an. */
 export async function downloadDatei(pfad: string, methode: 'GET' | 'POST', dateiname: string): Promise<void> {
   const token = getToken();
