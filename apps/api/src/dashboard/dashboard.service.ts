@@ -625,6 +625,23 @@ export class DashboardService {
     };
   }
 
+  /**
+   * Schlanke Herkunfts-Metadaten (nur Dateiname + Datenstand) je Datenart — für den dezenten
+   * Quelldatei-Hinweis in den Tabellenansichten. Bewusst OHNE Umsatzzahlen, daher für alle Rollen freigegeben.
+   */
+  async datenQuellen() {
+    const [ist, budget, sf] = await Promise.all([
+      this.prisma.importBatch.findFirst({ where: { typ: 'IST' }, orderBy: { erstelltAm: 'desc' }, select: { dateiname: true, erstelltAm: true } }),
+      this.prisma.importBatch.findFirst({ where: { typ: 'BUDGET' }, orderBy: { erstelltAm: 'desc' }, select: { dateiname: true, erstelltAm: true } }),
+      this.prisma.salesFlashDokument.findFirst({ orderBy: [{ jahr: 'desc' }, { monat: 'desc' }], select: { dateiname: true, erstelltAm: true, jahr: true, monat: true } }),
+    ]);
+    return {
+      ist: ist ? { dateiname: ist.dateiname, stand: ist.erstelltAm } : null,
+      budget: budget ? { dateiname: budget.dateiname, stand: budget.erstelltAm } : null,
+      salesFlash: sf ? { dateiname: sf.dateiname, stand: sf.erstelltAm, jahr: sf.jahr, monat: sf.monat } : null,
+    };
+  }
+
   async budgetDaten(jahr: number, aktor: RequestUser, filter: { regionCode?: string }, page = 1, pageSize = 50) {
     const scope = await this.scope.getScope(aktor);
     const ps = Math.min(Math.max(pageSize, 1), 20000); // hoher Deckel: clientseitige Excel-Tabelle lädt den Jahres-/Filter-Ausschnitt komplett

@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { api, downloadDatei } from '@/lib/api';
 import { Ampel, Button, Card, keur, prozent } from '@/components/ui';
+import { QuellHinweis } from '@/components/quell-hinweis';
 import { monKurz } from '@/lib/monate';
 
 const VORJAHR = '#9CA3AF';
@@ -329,6 +330,7 @@ export default function VertriebsKpiPage() {
               </BarChart>
             </ChartCard>
           </div>
+          <QuellHinweis arten={['ist', 'budget']} className="mt-1" />
         </>
       )}
     </div>
