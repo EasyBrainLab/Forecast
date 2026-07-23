@@ -21,7 +21,8 @@ const text = (v: string | number | null | undefined): string => (v === null || v
 
 /**
  * Wiederverwendbare Listen-Tabelle mit Sortierung (Klick auf Spaltenkopf) und Filter je Spalte
- * (Textsuche bzw. Auswahl). Rein clientseitig — für vollständig geladene Datensatz-Listen.
+ * (Textsuche bzw. Auswahl). Optional globale Suche über alle Spalten und dichte (Excel-artige) Darstellung.
+ * Rein clientseitig — für vollständig geladene Datensatz-Listen.
  */
 export function DataTable<T>({
   columns,
@@ -29,15 +30,22 @@ export function DataTable<T>({
   initialSort,
   leerText = 'Keine Einträge.',
   rowKey,
+  globaleSuche = false,
+  suchePlaceholder = 'Suche über alle Spalten…',
+  dicht = false,
 }: {
   columns: Column<T>[];
   rows: T[];
   initialSort?: { key: string; dir: 'asc' | 'desc' };
   leerText?: string;
   rowKey: (row: T, index: number) => string;
+  globaleSuche?: boolean;
+  suchePlaceholder?: string;
+  dicht?: boolean;
 }) {
   const [sort, setSort] = useState<SortState>(initialSort ?? null);
   const [filter, setFilter] = useState<Record<string, string>>({});
+  const [suche, setSuche] = useState('');
 
   const val = (col: Column<T>, row: T): string | number | null | undefined => (col.value ? col.value(row) : undefined);
 
@@ -46,7 +54,10 @@ export function DataTable<T>({
     for (const col of columns) {
       if (col.filter !== 'select') continue;
       const set = new Set<string>();
-      for (const r of rows) { const t = text(val(col, r)); if (t) set.add(t); }
+      for (const r of rows) {
+        const t = text(val(col, r));
+        if (t) set.add(t);
+      }
       out[col.key] = [...set].sort((a, b) => a.localeCompare(b, 'de'));
     }
     return out;
@@ -54,48 +65,81 @@ export function DataTable<T>({
 
   const gefiltert = useMemo(() => {
     let data = rows;
+    if (suche.trim()) {
+      const q = suche.trim().toLowerCase();
+      data = data.filter((r) => columns.some((c) => text(val(c, r)).toLowerCase().includes(q)));
+    }
     for (const col of columns) {
       const f = filter[col.key];
       if (!f) continue;
       if (col.filter === 'select') data = data.filter((r) => text(val(col, r)) === f);
-      else { const q = f.toLowerCase(); data = data.filter((r) => text(val(col, r)).toLowerCase().includes(q)); }
+      else {
+        const q = f.toLowerCase();
+        data = data.filter((r) => text(val(col, r)).toLowerCase().includes(q));
+      }
     }
     if (sort) {
       const col = columns.find((c) => c.key === sort.key);
       if (col) {
         const factor = sort.dir === 'asc' ? 1 : -1;
         data = [...data].sort((a, b) => {
-          const av = val(col, a); const bv = val(col, b);
+          const av = val(col, a);
+          const bv = val(col, b);
           if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * factor;
           return text(av).localeCompare(text(bv), 'de', { numeric: true }) * factor;
         });
       }
     }
     return data;
-  }, [rows, columns, filter, sort]);
+  }, [rows, columns, filter, sort, suche]);
 
   const toggleSort = (col: Column<T>) => {
     if (col.sortable === false) return;
     setSort((s) => (s?.key !== col.key ? { key: col.key, dir: 'asc' } : s.dir === 'asc' ? { key: col.key, dir: 'desc' } : null));
   };
-  const aktiveFilter = Object.values(filter).filter(Boolean).length;
+  const aktiveFilter = Object.values(filter).filter(Boolean).length + (suche.trim() ? 1 : 0);
+  const pad = dicht ? 'px-1.5 py-0.5' : 'py-2 pr-3';
+  const size = dicht ? 'text-xs' : 'text-sm';
 
   return (
     <div className="space-y-1">
+      {globaleSuche && (
+        <input
+          className="w-full max-w-md rounded border border-gray-300 px-2 py-1 text-sm"
+          placeholder={suchePlaceholder}
+          value={suche}
+          onChange={(e) => setSuche(e.target.value)}
+        />
+      )}
       <div className="flex items-center justify-between text-xs text-gray-400">
-        <span>{gefiltert.length}{gefiltert.length !== rows.length ? ` von ${rows.length}` : ''} Einträge</span>
+        <span>
+          {gefiltert.length}
+          {gefiltert.length !== rows.length ? ` von ${rows.length}` : ''} Einträge
+        </span>
         {aktiveFilter > 0 && (
-          <button className="text-ez-primary hover:underline" onClick={() => setFilter({})}>Filter zurücksetzen</button>
+          <button
+            className="text-ez-primary hover:underline"
+            onClick={() => {
+              setFilter({});
+              setSuche('');
+            }}
+          >
+            Filter zurücksetzen
+          </button>
         )}
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className={`w-full ${size} tabular-nums`}>
           <thead>
             <tr className="border-b border-gray-200 text-left text-gray-500">
               {columns.map((col) => {
                 const aktiv = sort?.key === col.key;
                 return (
-                  <th key={col.key} className={`py-2 pr-3 ${col.align === 'right' ? 'text-right' : ''} ${col.sortable === false ? '' : 'cursor-pointer select-none'}`} onClick={() => toggleSort(col)}>
+                  <th
+                    key={col.key}
+                    className={`${pad} ${col.align === 'right' ? 'text-right' : ''} ${col.sortable === false ? '' : 'cursor-pointer select-none'} ${dicht ? 'whitespace-nowrap' : ''}`}
+                    onClick={() => toggleSort(col)}
+                  >
                     {col.label}
                     {col.sortable !== false && <span className="ml-1 text-gray-400">{aktiv ? (sort!.dir === 'asc' ? '▲' : '▼') : '↕'}</span>}
                   </th>
@@ -104,14 +148,27 @@ export function DataTable<T>({
             </tr>
             <tr className="border-b border-gray-100">
               {columns.map((col) => (
-                <th key={col.key} className="pb-2 pr-3 font-normal">
+                <th key={col.key} className={`${dicht ? 'px-1.5 pb-1' : 'pb-2 pr-3'} font-normal`}>
                   {col.filter === 'none' ? null : col.filter === 'select' ? (
-                    <select className="w-full rounded border border-gray-200 px-1 py-1 text-xs font-normal" value={filter[col.key] ?? ''} onChange={(e) => setFilter((f) => ({ ...f, [col.key]: e.target.value }))}>
+                    <select
+                      className="w-full rounded border border-gray-200 px-1 py-0.5 text-xs font-normal"
+                      value={filter[col.key] ?? ''}
+                      onChange={(e) => setFilter((f) => ({ ...f, [col.key]: e.target.value }))}
+                    >
                       <option value="">Alle</option>
-                      {(optionen[col.key] ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+                      {(optionen[col.key] ?? []).map((o) => (
+                        <option key={o} value={o}>
+                          {o}
+                        </option>
+                      ))}
                     </select>
                   ) : (
-                    <input className="w-full rounded border border-gray-200 px-1 py-1 text-xs font-normal" placeholder="Filter…" value={filter[col.key] ?? ''} onChange={(e) => setFilter((f) => ({ ...f, [col.key]: e.target.value }))} />
+                    <input
+                      className="w-full rounded border border-gray-200 px-1 py-0.5 text-xs font-normal"
+                      placeholder="Filter…"
+                      value={filter[col.key] ?? ''}
+                      onChange={(e) => setFilter((f) => ({ ...f, [col.key]: e.target.value }))}
+                    />
                   )}
                 </th>
               ))}
@@ -119,9 +176,9 @@ export function DataTable<T>({
           </thead>
           <tbody>
             {gefiltert.map((row, i) => (
-              <tr key={rowKey(row, i)} className="border-b border-gray-100 align-top">
+              <tr key={rowKey(row, i)} className={`border-b border-gray-100 align-top ${dicht ? 'hover:bg-gray-50' : ''}`}>
                 {columns.map((col) => (
-                  <td key={col.key} className={`py-2 pr-3 ${col.align === 'right' ? 'text-right tabular-nums' : ''} ${col.className ?? ''}`}>
+                  <td key={col.key} className={`${pad} ${col.align === 'right' ? 'text-right tabular-nums' : ''} ${dicht ? 'whitespace-nowrap' : ''} ${col.className ?? ''}`}>
                     {col.render ? col.render(row) : text(val(col, row))}
                   </td>
                 ))}

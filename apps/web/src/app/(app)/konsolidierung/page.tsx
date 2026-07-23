@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import { api, downloadDatei } from '@/lib/api';
 import { Button, Card } from '@/components/ui';
+import Link from 'next/link';
 import { monKurz } from '@/lib/monate';
 
 interface Zeile {
@@ -115,7 +116,7 @@ export default function KonsolidierungPage() {
       </div>
 
       {isLoading && <p className="text-gray-500">Lädt…</p>}
-      {error && <p className="text-ez-accent">{(error as Error).message}</p>}
+      {error && !data && <p className="text-ez-accent">{(error as Error).message}</p>}
 
       {data && totals && (
         <Card className="space-y-3 p-4">
@@ -156,10 +157,20 @@ export default function KonsolidierungPage() {
                   const m = metrik(z);
                   return (
                     <tr key={z.e1Id} className="border-t border-gray-100">
-                      <td className="sticky left-0 z-10 w-[150px] bg-white p-1 font-semibold">{z.bezeichnung}</td>
+                      <td className="sticky left-0 z-10 w-[150px] bg-white p-1 font-semibold">
+                        <Link href={`/daten?tab=ist&jahr=${jahr}&e1Id=${z.e1Id}`} className="text-ez-primary hover:underline" title={t('zuRohdaten')}>
+                          {z.bezeichnung}
+                        </Link>
+                      </td>
                       {istMonate.map((p) => (
                         <td key={p} className="border-l border-gray-100 p-1 text-right text-gray-500">
-                          {z.istMonate[p] ? f0(z.istMonate[p]) : ''}
+                          {z.istMonate[p] ? (
+                            <Link href={`/daten?tab=ist&jahr=${jahr}&e1Id=${z.e1Id}&monat=${monatNr(p)}`} className="hover:text-ez-primary hover:underline" title={t('zuRohdaten')}>
+                              {f0(z.istMonate[p])}
+                            </Link>
+                          ) : (
+                            ''
+                          )}
                         </td>
                       ))}
                       <td className="border-l border-gray-300 bg-gray-50 p-1 text-right font-medium">{f0(m.summeActual)}</td>
