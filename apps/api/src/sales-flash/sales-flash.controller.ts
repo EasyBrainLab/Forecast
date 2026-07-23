@@ -70,4 +70,27 @@ export class SalesFlashController {
   setActuals(@Query('jahr') jahr: string, @Query('monat') monat: string, @Body() dto: ActualsDto, @CurrentUser() aktor: RequestUser) {
     return this.service.setActuals(Number(jahr), Number(monat), { total: dto.total ?? null, regionen: dto.regionen ?? [] }, dto.kommentar ?? null, aktor);
   }
+
+  // --- Detail-Abgleich (granulare Controlling-Zahlen aus den Region-Excels) ---
+
+  @Roles('BU_LEITER', 'ADMIN')
+  @Post('detail/upload')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024 } }))
+  async uploadDetail(@UploadedFile() file: UploadFile, @Query('jahr') jahr: string, @Query('monat') monat: string, @Query('region') region: string, @CurrentUser() aktor: RequestUser) {
+    if (!file) throw new BadRequestException('Keine Datei übergeben.');
+    return this.service.uploadDetail(file.buffer, file.originalname, Number(jahr), Number(monat), region, aktor);
+  }
+
+  @Roles('VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT')
+  @Get('detail/staende')
+  detailStaende() {
+    return this.service.detailStaende();
+  }
+
+  @Roles('VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN', 'SUPPORT')
+  @Get('detail/abgleich')
+  detailAbgleich(@Query('jahr') jahr: string, @Query('monat') monat: string, @Query('region') region: string) {
+    return this.service.detailAbgleich(Number(jahr) || new Date().getUTCFullYear(), Number(monat) || 12, region || undefined);
+  }
 }

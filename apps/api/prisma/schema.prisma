@@ -208,6 +208,7 @@ model Land {
   budgetAenderungen BudgetAenderung[]
   forecastVersionen ForecastVersion[]
   absaetze          Absatz[]
+  salesFlashDetails SalesFlashDetail[]
 
   @@index([nameEn])
   @@map("land")
@@ -229,6 +230,7 @@ model ProduktgruppeE1 {
   budgetAenderungen BudgetAenderung[]
   forecastVersionen ForecastVersion[]
   reportEintraege   ReportEintrag[]
+  salesFlashDetails SalesFlashDetail[]
 
   @@map("produktgruppe_e1")
 }
@@ -734,6 +736,31 @@ model SalesFlashDokument {
   @@unique([jahr, monat])
   @@index([jahr, monat])
   @@map("sales_flash_dokument")
+}
+
+/// Granulare Controlling-Detailwerte aus den Region-Excels (Produktgruppe x Land x Monat), Grundlage
+/// des Detail-Abgleichs gegen den Tool-Ist (GL). Voll-Ersatz je (jahr, monat, regionCode) beim Upload.
+model SalesFlashDetail {
+  id               String   @id @default(uuid())
+  jahr             Int // Stand-Jahr des Sales-Flash-Zyklus
+  monat            Int // Stand-Monat (Actuals gelten Jan..monat)
+  regionCode       String
+  e1Id             String
+  landId           String?
+  periodenMonat    Int // 1-12: Kalendermonat des Actual-Werts
+  actualEur        Decimal  @db.Decimal(15, 2)
+  produktgruppeRoh String // Excel-Klartext (Nachvollziehbarkeit des Mappings)
+  landRoh          String
+  dateiname        String
+  hochgeladenVon   String // denormalisiert (E-Mail)
+  erstelltAm       DateTime @default(now())
+
+  e1   ProduktgruppeE1 @relation(fields: [e1Id], references: [id])
+  land Land?           @relation(fields: [landId], references: [isoCode])
+
+  @@unique([jahr, monat, regionCode, e1Id, landId, periodenMonat])
+  @@index([jahr, monat, regionCode])
+  @@map("sales_flash_detail")
 }
 
 // ─────────────── TENDER / AUSSCHREIBUNGEN (fristen-getrieben; Reminder via Scheduler) ───────────────
