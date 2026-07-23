@@ -43,6 +43,7 @@ const TYP_LABEL: Record<string, string> = {
   IST: 'Ist-Umsätze',
   BUDGET: 'Budget',
   ABSATZ: 'Absatz / Stückzahlen',
+  LIEFERMENGE: 'Liefermengen (SOL)',
   KUNDENSTAMM: 'Kundenstamm (D365)',
   RECHNUNG: 'Rechnungsköpfe (D365)',
   RECHNUNGSPOSITION: 'Rechnungspositionen (D365)',
@@ -319,6 +320,12 @@ export default function ImportPage() {
         titel="Absatz / Stückzahlen (CSV)"
         beschreibung="Verkaufsmengen je Land/Kunde (Power-BI-Export SF_MM_MM_JJJJ…). Periode wird aus dem Dateinamen erkannt; Vorjahr ist in der Datei enthalten."
         endpoint="/absatz/import"
+        accept=".csv"
+      />
+      <ImportKachel
+        titel="Liefermengen (CSV)"
+        beschreibung="Zeilenscharfe SalesOrder-Lineitems (ERP-Export SOL). Liefermonat aus Shipping_Date; Voll-Ersatz je enthaltenem Monat — mehrfacher Upload derselben Datei ist unschädlich."
+        endpoint="/liefermenge/import"
         accept=".csv"
       />
 

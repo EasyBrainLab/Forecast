@@ -47,8 +47,9 @@ export class KundeRegionService {
       create: { kunde: k, regionCode },
     });
     const { count } = await this.prisma.absatz.updateMany({ where: { kunde: k }, data: { regionCode } });
-    await this.audit.write({ entitaet: 'KundeRegion', entitaetId: mapping.id, aktion: 'UPDATE', userId: aktor.id, userEmail: aktor.email, nachherWert: { kunde: k, regionCode, zeilenAktualisiert: count } });
-    return { kunde: k, regionCode, zeilenAktualisiert: count };
+    const lm = await this.prisma.liefermenge.updateMany({ where: { kunde: k }, data: { regionCode } });
+    await this.audit.write({ entitaet: 'KundeRegion', entitaetId: mapping.id, aktion: 'UPDATE', userId: aktor.id, userEmail: aktor.email, nachherWert: { kunde: k, regionCode, zeilenAktualisiert: count + lm.count } });
+    return { kunde: k, regionCode, zeilenAktualisiert: count + lm.count };
   }
 
   /** Stapel-Zuordnung (mehrere Kunden auf einmal). */
@@ -65,8 +66,9 @@ export class KundeRegionService {
     const k = kunde.trim();
     await this.prisma.kundeRegion.deleteMany({ where: { kunde: k } });
     const { count } = await this.prisma.absatz.updateMany({ where: { kunde: k }, data: { regionCode: null } });
-    await this.audit.write({ entitaet: 'KundeRegion', entitaetId: k, aktion: 'DELETE', userId: aktor.id, userEmail: aktor.email, metadaten: { kunde: k, zeilenZurueckgesetzt: count } });
-    return { kunde: k, zeilenZurueckgesetzt: count };
+    const lm = await this.prisma.liefermenge.updateMany({ where: { kunde: k }, data: { regionCode: null } });
+    await this.audit.write({ entitaet: 'KundeRegion', entitaetId: k, aktion: 'DELETE', userId: aktor.id, userEmail: aktor.email, metadaten: { kunde: k, zeilenZurueckgesetzt: count + lm.count } });
+    return { kunde: k, zeilenZurueckgesetzt: count + lm.count };
   }
 
   /**

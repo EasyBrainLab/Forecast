@@ -209,6 +209,7 @@ model Land {
   forecastVersionen ForecastVersion[]
   absaetze          Absatz[]
   salesFlashDetails SalesFlashDetail[]
+  liefermengen      Liefermenge[]
 
   @@index([nameEn])
   @@map("land")
@@ -231,6 +232,7 @@ model ProduktgruppeE1 {
   forecastVersionen ForecastVersion[]
   reportEintraege   ReportEintrag[]
   salesFlashDetails SalesFlashDetail[]
+  liefermengen      Liefermenge[]
 
   @@map("produktgruppe_e1")
 }
@@ -244,9 +246,10 @@ model ProduktgruppeE2 {
   erstelltAm     DateTime @default(now())
   aktualisiertAm DateTime @updatedAt
 
-  e1          ProduktgruppeE1 @relation(fields: [e1Id], references: [id])
-  istUmsaetze IstUmsatz[]
-  budgets     Budget[]
+  e1           ProduktgruppeE1 @relation(fields: [e1Id], references: [id])
+  istUmsaetze  IstUmsatz[]
+  budgets      Budget[]
+  liefermengen Liefermenge[]
 
   @@index([e1Id])
   @@map("produktgruppe_e2")
@@ -453,6 +456,7 @@ model ImportBatch {
   kundenstamm   Kundenstamm[]
   rechnungen    Verkaufsrechnung[]
   positionen    Verkaufsrechnungsposition[]
+  liefermengen  Liefermenge[]
 
   @@index([hash])
   @@index([status])
@@ -638,6 +642,46 @@ model Absatz {
   @@index([landId])
   @@index([regionCode])
   @@map("absatz")
+}
+
+/// Zeilenscharfe Liefermengen (SalesOrderLineitems aus dem ERP-Export). Je (jahr, monat) nach Shipping_Date
+/// Voll-Ersatz beim Import. Kein eindeutiger Zeilenschlüssel in der Quelle → keine Upsert-, sondern Perioden-Ersatz-Idempotenz.
+model Liefermenge {
+  id                String   @id @default(uuid())
+  jahr              Int // aus Shipping_Date
+  monat             Int // 1..12 aus Shipping_Date (Liefermonat)
+  shippingDate      DateTime // tatsächliches Versanddatum
+  auftragsnummer    String // SOL_SALESORDERNUMBER
+  kunde             String // SO_DELIVERYADDRESSNAME
+  landId            String? // SOL_DimensionValue_CountryCode -> Land.isoCode (leer erlaubt)
+  regionCode        String? // aus KundeRegion aufgelöst (null = nicht zugeordnet, nur BU-weit sichtbar)
+  e1Id              String // SO_Categorie_00 via E1_LOOKUP (unmappbar -> Quarantäne, daher nie null)
+  e2Id              String? // SO_Categorie_01 via LIEFERMENGE_E2_LOOKUP
+  produktgruppeRoh  String // SO_Categorie_00 roh
+  unterkategorieRoh String // SO_Categorie_01 roh
+  itemNumber        String // SOL_ITEMNUMBER (SKU)
+  stueckzahl        Decimal  @db.Decimal(15, 2) // negative = Retoure/Storno, erhalten
+  seedzahl          Decimal  @db.Decimal(15, 2) // negative erhalten
+  orderedQty        Decimal? @db.Decimal(15, 2) // Summe von SOL_ORDEREDSALESQUANTITY
+  lineAmountEur     Decimal? @db.Decimal(15, 2) // Summe von SOL_LINEAMOUNT
+  kostenstelleRoh   String? // Summe von SOL_Kostenstelle (nur roh, keine Region-Auflösung)
+  kostentraeger     String? // SOL_Kostenträger
+  dataAreaId        String? // SOL_DATAAREAID
+  importBatchId     String
+  erstelltAm        DateTime @default(now())
+
+  land        Land?            @relation(fields: [landId], references: [isoCode])
+  e1          ProduktgruppeE1  @relation(fields: [e1Id], references: [id])
+  e2          ProduktgruppeE2? @relation(fields: [e2Id], references: [id])
+  importBatch ImportBatch      @relation(fields: [importBatchId], references: [id])
+
+  @@index([jahr, monat])
+  @@index([regionCode])
+  @@index([landId])
+  @@index([e1Id])
+  @@index([kunde])
+  @@index([importBatchId])
+  @@map("liefermenge")
 }
 
 // ─────────────── KUNDE → REGION (Admin-pflegbar; ermöglicht AGM-Scoping des Absatzes) ───────────────

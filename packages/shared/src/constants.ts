@@ -62,6 +62,14 @@ export const E1_LOOKUP: Readonly<Record<string, E1Kategorie>> = {
   'Revenue Other': E1Kategorie.OTHER,
 };
 
+// Liefermengen-Import: SO_Categorie_01 (ERP-Unterkategorie) → kanonischer E2-Name (siehe E2_TABLE).
+export const LIEFERMENGE_E2_LOOKUP: Readonly<Record<string, string>> = {
+  '1_Loose_Seeds': 'Loose Seeds S06/S17',
+  '1_Isocord_Strand': 'Stranded Seeds S06/S17',
+  '2_Ruthen': 'Ru-106 Applicators',
+  '2_Seeds': 'I-125 Ocular Seeds',
+};
+
 // ─────────────── PRODUKTGRUPPE E2 (kanonisch = CSV-Schreibweise; alle 17 realen Werte) ───────────────
 export interface E2Definition {
   name: string;
