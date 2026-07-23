@@ -617,6 +617,8 @@ export class DashboardService {
         produktgruppe: i.e1.nameDe,
         e2: i.e2?.name ?? '—',
         kostentraeger: i.kostentraeger ?? '—',
+        sachkonto: i.sachkonto ?? '—',
+        postingtype: i.postingtype ?? '—',
         wertEur: round2(Number(i.wertEur)),
         istSondereffekt: i.istSondereffekt,
       })),

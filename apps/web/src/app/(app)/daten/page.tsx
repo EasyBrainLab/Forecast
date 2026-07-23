@@ -26,6 +26,8 @@ interface IstRow {
   produktgruppe: string;
   e2: string;
   kostentraeger: string;
+  sachkonto: string;
+  postingtype: string;
   wertEur: number;
   istSondereffekt: boolean;
 }
@@ -77,6 +79,8 @@ function DatenInhalt() {
     { key: 'pg', label: 'Produktgruppe', value: (r) => r.produktgruppe, filter: 'select' },
     { key: 'e2', label: 'E2', value: (r) => r.e2 },
     { key: 'ktr', label: 'KTR', value: (r) => r.kostentraeger },
+    { key: 'sachkonto', label: 'Sachkonto', value: (r) => r.sachkonto, filter: 'select' },
+    { key: 'buchungstyp', label: 'Buchungstyp', value: (r) => r.postingtype, filter: 'select' },
     { key: 'monat', label: 'Mon', value: (r) => r.monat, align: 'right', filter: 'none' },
     {
       key: 'wert',
@@ -167,9 +171,9 @@ function DatenInhalt() {
         {laedt ? (
           <p className="text-gray-500">Lädt…</p>
         ) : tab === 'ist' ? (
-          <DataTable columns={istCols} rows={ist.data?.items ?? []} rowKey={(r) => r.recid} initialSort={{ key: 'datum', dir: 'desc' }} dicht globaleSuche suchePlaceholder="Suche (RECID, Land, KST, Kostenträger …)" leerText="Keine Ist-Buchungen für diese Filter." />
+          <DataTable columns={istCols} rows={ist.data?.items ?? []} rowKey={(r) => r.recid} initialSort={{ key: 'datum', dir: 'desc' }} dicht globaleSuche spaltenWahl tabellenId="rohdaten-ist" suchePlaceholder="Suche (RECID, Land, KST, Kostenträger, Sachkonto …)" leerText="Keine Ist-Buchungen für diese Filter." />
         ) : (
-          <DataTable columns={budgetCols} rows={budget.data?.items ?? []} rowKey={(r) => r.id} dicht globaleSuche leerText="Keine Budget-Zeilen für diese Filter." />
+          <DataTable columns={budgetCols} rows={budget.data?.items ?? []} rowKey={(r) => r.id} dicht globaleSuche spaltenWahl tabellenId="rohdaten-budget" leerText="Keine Budget-Zeilen für diese Filter." />
         )}
       </Card>
     </div>

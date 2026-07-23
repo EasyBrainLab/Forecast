@@ -13,6 +13,8 @@ export interface Column<T> {
   sortable?: boolean; // Default true
   align?: 'left' | 'right';
   className?: string;
+  /** Spalte ist bei Spaltenwahl anfangs ausgeblendet (einblendbar). Nur mit spaltenWahl relevant. */
+  standardVersteckt?: boolean;
 }
 
 type SortState = { key: string; dir: 'asc' | 'desc' } | null;
@@ -21,8 +23,9 @@ const text = (v: string | number | null | undefined): string => (v === null || v
 
 /**
  * Wiederverwendbare Listen-Tabelle mit Sortierung (Klick auf Spaltenkopf) und Filter je Spalte
- * (Textsuche bzw. Auswahl). Optional globale Suche über alle Spalten und dichte (Excel-artige) Darstellung.
- * Rein clientseitig — für vollständig geladene Datensatz-Listen.
+ * (Textsuche bzw. Auswahl). Optional globale Suche, dichte (Excel-artige) Darstellung und
+ * frei ein-/ausblendbare Spalten (in localStorage gemerkt). Rein clientseitig — für vollständig
+ * geladene Datensatz-Listen.
  */
 export function DataTable<T>({
   columns,
@@ -33,6 +36,8 @@ export function DataTable<T>({
   globaleSuche = false,
   suchePlaceholder = 'Suche über alle Spalten…',
   dicht = false,
+  spaltenWahl = false,
+  tabellenId,
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -42,16 +47,48 @@ export function DataTable<T>({
   globaleSuche?: boolean;
   suchePlaceholder?: string;
   dicht?: boolean;
+  /** Blendet einen „Spalten"-Knopf ein, über den der User Spalten ein-/ausblenden kann. */
+  spaltenWahl?: boolean;
+  /** Schlüssel für die Persistenz der Spaltenauswahl in localStorage (nur mit spaltenWahl). */
+  tabellenId?: string;
 }) {
   const [sort, setSort] = useState<SortState>(initialSort ?? null);
   const [filter, setFilter] = useState<Record<string, string>>({});
   const [suche, setSuche] = useState('');
+  const [versteckt, setVersteckt] = useState<Set<string>>(() => {
+    if (typeof window !== 'undefined' && tabellenId) {
+      try {
+        const raw = window.localStorage.getItem(`dt-cols-${tabellenId}`);
+        if (raw) return new Set(JSON.parse(raw) as string[]);
+      } catch {
+        /* ungültiger localStorage-Wert */
+      }
+    }
+    return new Set(columns.filter((c) => c.standardVersteckt).map((c) => c.key));
+  });
 
   const val = (col: Column<T>, row: T): string | number | null | undefined => (col.value ? col.value(row) : undefined);
+  const sicht = useMemo(() => (spaltenWahl ? columns.filter((c) => !versteckt.has(c.key)) : columns), [columns, versteckt, spaltenWahl]);
+
+  const toggleSpalte = (key: string) => {
+    setVersteckt((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      if (typeof window !== 'undefined' && tabellenId) {
+        try {
+          window.localStorage.setItem(`dt-cols-${tabellenId}`, JSON.stringify([...next]));
+        } catch {
+          /* localStorage nicht verfügbar */
+        }
+      }
+      return next;
+    });
+  };
 
   const optionen = useMemo(() => {
     const out: Record<string, string[]> = {};
-    for (const col of columns) {
+    for (const col of sicht) {
       if (col.filter !== 'select') continue;
       const set = new Set<string>();
       for (const r of rows) {
@@ -61,15 +98,15 @@ export function DataTable<T>({
       out[col.key] = [...set].sort((a, b) => a.localeCompare(b, 'de'));
     }
     return out;
-  }, [columns, rows]);
+  }, [sicht, rows]);
 
   const gefiltert = useMemo(() => {
     let data = rows;
     if (suche.trim()) {
       const q = suche.trim().toLowerCase();
-      data = data.filter((r) => columns.some((c) => text(val(c, r)).toLowerCase().includes(q)));
+      data = data.filter((r) => sicht.some((c) => text(val(c, r)).toLowerCase().includes(q)));
     }
-    for (const col of columns) {
+    for (const col of sicht) {
       const f = filter[col.key];
       if (!f) continue;
       if (col.filter === 'select') data = data.filter((r) => text(val(col, r)) === f);
@@ -79,7 +116,7 @@ export function DataTable<T>({
       }
     }
     if (sort) {
-      const col = columns.find((c) => c.key === sort.key);
+      const col = sicht.find((c) => c.key === sort.key);
       if (col) {
         const factor = sort.dir === 'asc' ? 1 : -1;
         data = [...data].sort((a, b) => {
@@ -91,7 +128,7 @@ export function DataTable<T>({
       }
     }
     return data;
-  }, [rows, columns, filter, sort, suche]);
+  }, [rows, sicht, filter, sort, suche]);
 
   const toggleSort = (col: Column<T>) => {
     if (col.sortable === false) return;
@@ -103,13 +140,32 @@ export function DataTable<T>({
 
   return (
     <div className="space-y-1">
-      {globaleSuche && (
-        <input
-          className="w-full max-w-md rounded border border-gray-300 px-2 py-1 text-sm"
-          placeholder={suchePlaceholder}
-          value={suche}
-          onChange={(e) => setSuche(e.target.value)}
-        />
+      {(globaleSuche || spaltenWahl) && (
+        <div className="flex items-center gap-2">
+          {globaleSuche && (
+            <input
+              className="w-full max-w-md rounded border border-gray-300 px-2 py-1 text-sm"
+              placeholder={suchePlaceholder}
+              value={suche}
+              onChange={(e) => setSuche(e.target.value)}
+            />
+          )}
+          {spaltenWahl && (
+            <details className="relative ml-auto shrink-0">
+              <summary className="cursor-pointer list-none rounded border border-gray-300 bg-white px-3 py-1 text-sm text-gray-700 hover:bg-gray-50">
+                ⚙ Spalten ({sicht.length}/{columns.length})
+              </summary>
+              <div className="absolute right-0 z-30 mt-1 max-h-80 w-56 overflow-auto rounded border border-gray-200 bg-white p-2 shadow-lg">
+                {columns.map((c) => (
+                  <label key={c.key} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-gray-50">
+                    <input type="checkbox" checked={!versteckt.has(c.key)} onChange={() => toggleSpalte(c.key)} />
+                    <span className="truncate">{c.label}</span>
+                  </label>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
       )}
       <div className="flex items-center justify-between text-xs text-gray-400">
         <span>
@@ -132,7 +188,7 @@ export function DataTable<T>({
         <table className={`w-full ${size} tabular-nums`}>
           <thead>
             <tr className="border-b border-gray-200 text-left text-gray-500">
-              {columns.map((col) => {
+              {sicht.map((col) => {
                 const aktiv = sort?.key === col.key;
                 return (
                   <th
@@ -147,7 +203,7 @@ export function DataTable<T>({
               })}
             </tr>
             <tr className="border-b border-gray-100">
-              {columns.map((col) => (
+              {sicht.map((col) => (
                 <th key={col.key} className={`${dicht ? 'px-1.5 pb-1' : 'pb-2 pr-3'} font-normal`}>
                   {col.filter === 'none' ? null : col.filter === 'select' ? (
                     <select
@@ -177,7 +233,7 @@ export function DataTable<T>({
           <tbody>
             {gefiltert.map((row, i) => (
               <tr key={rowKey(row, i)} className={`border-b border-gray-100 align-top ${dicht ? 'hover:bg-gray-50' : ''}`}>
-                {columns.map((col) => (
+                {sicht.map((col) => (
                   <td key={col.key} className={`${pad} ${col.align === 'right' ? 'text-right tabular-nums' : ''} ${dicht ? 'whitespace-nowrap' : ''} ${col.className ?? ''}`}>
                     {col.render ? col.render(row) : text(val(col, row))}
                   </td>
