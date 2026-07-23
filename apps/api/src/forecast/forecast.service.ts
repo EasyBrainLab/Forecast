@@ -118,6 +118,29 @@ export class ForecastService {
   }
 
   /**
+   * Löscht eine (versehentlich angelegte) Forecast-Periode einer Region. Nur zulässig, solange die Periode
+   * OFFEN ist (noch nicht bestätigt/angepasst/abgeschlossen) — danach bitte zurücksetzen bzw. wiedereröffnen.
+   * Der AGM sieht die Periode danach nicht mehr. Die aus dem Budget geseedeten (append-only) ForecastVersionen
+   * bleiben als Historie bestehen, werden aber mangels existierender Periode in den Auswertungen ignoriert.
+   */
+  async loeschePeriode(periode: string, regionCode: string, aktor: RequestUser): Promise<{ periode: string; regionCode: string }> {
+    const p = await this.ladePeriode(periode, regionCode);
+    if (p.status !== ForecastStatus.OFFEN) {
+      throw new ConflictException('Nur offene Perioden können gelöscht werden. Bereits bearbeitete oder abgeschlossene Perioden bitte zurücksetzen bzw. wiedereröffnen.');
+    }
+    await this.prisma.forecastPeriode.delete({ where: { periode_regionCode: { periode, regionCode } } });
+    await this.audit.write({
+      entitaet: 'ForecastPeriode',
+      entitaetId: p.id,
+      aktion: 'DELETE',
+      userId: aktor.id,
+      userEmail: aktor.email,
+      metadaten: { periode, regionCode, status: p.status },
+    });
+    return { periode, regionCode };
+  }
+
+  /**
    * Legt eine neue Forecast-Zeile (Land × Produktgruppe) in einer OFFENEN Periode an (Startwerte 0 je Restmonat).
    * Konsistenz: Periode offen, Land & Produktgruppe müssen existieren, die Kombination darf noch nicht vorhanden sein.
    */

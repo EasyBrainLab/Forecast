@@ -366,8 +366,10 @@ export class DashboardService {
     }
 
     // Forecast je E1 je Monat: pro Region jüngste Periode, darin jüngste Version je Zelle, nur Monate >= istGrenze.
+    const gueltig = await this.gueltigePeriodenSet(jahr);
     const byRegion = new Map<string, typeof versionen>();
     for (const v of versionen) {
+      if (!gueltig.has(`${v.periode}|${v.regionCode}`)) continue; // Versionen gelöschter Perioden ignorieren
       const arr = byRegion.get(v.regionCode) ?? [];
       arr.push(v);
       byRegion.set(v.regionCode, arr);
@@ -415,14 +417,21 @@ export class DashboardService {
     }, 0);
   }
 
+  /** Menge der aktuell existierenden Perioden ("periode|regionCode") — verwaiste (append-only) Versionen gelöschter Perioden ausschließen. */
+  private async gueltigePeriodenSet(jahr: number): Promise<Set<string>> {
+    const perioden = await this.prisma.forecastPeriode.findMany({ where: { jahr }, select: { periode: true, regionCode: true } });
+    return new Set(perioden.map((p) => `${p.periode}|${p.regionCode}`));
+  }
+
   private async forecastRestProRegion(jahr: number, scope: Scope, istGrenze: number): Promise<Map<string, number>> {
     const where: Prisma.ForecastVersionWhereInput = { jahr };
     if (!scope.unbeschraenkt) where.regionCode = { in: scope.regionCodes.length ? scope.regionCodes : ['__none__'] };
-    const versionen = await this.prisma.forecastVersion.findMany({ where, orderBy: { version: 'desc' } });
+    const [versionen, gueltig] = await Promise.all([this.prisma.forecastVersion.findMany({ where, orderBy: { version: 'desc' } }), this.gueltigePeriodenSet(jahr)]);
     // pro Region: jüngste Periode; darin jüngste Version je Zelle
     const proRegion = new Map<string, number>();
     const byRegion = new Map<string, typeof versionen>();
     for (const v of versionen) {
+      if (!gueltig.has(`${v.periode}|${v.regionCode}`)) continue; // Versionen gelöschter Perioden ignorieren
       const arr = byRegion.get(v.regionCode) ?? [];
       arr.push(v);
       byRegion.set(v.regionCode, arr);
