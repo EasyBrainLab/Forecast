@@ -339,50 +339,6 @@ export class ExportService {
     sumRow.eachCell((c) => (c.font = { ...(c.font ?? {}), bold: true }));
     sumRow.getCell(1).border = { top: { style: 'medium' } };
 
-    // P&L-Zeilen (BU-Gesamt) unter der Umsatz-Summe.
-    const g = k.guv;
-    if (g?.vorhanden) {
-      const plZeile = (label: string, line: { istMonate: Record<string, number>; forecastMonate: Record<string, number>; budgetMonate: Record<string, number> }, opts?: { bold?: boolean }) => {
-        const m = metrik(line);
-        const row = ws.addRow([]);
-        row.getCell(1).value = label;
-        istMonate.forEach((p, i) => setNum(row, 2 + i, line.istMonate[p] ?? 0, { leerBei0: true }));
-        setNum(row, cSumActual, m.summeActual, { bg: ACTUAL_BG });
-        fcMonate.forEach((p, i) => setNum(row, cFcStart + i, line.forecastMonate[p] ?? 0, { leerBei0: true }));
-        setNum(row, cSumForecast, m.summeForecast, { bg: FORECAST_BG });
-        setNum(row, cBud, m.bud, { bg: FY_BG });
-        setNum(row, cBud + 1, m.actBud);
-        setNum(row, cBud + 2, m.actFc);
-        setNum(row, cBud + 3, m.dBudActBud, { fmt: DELTA, delta: true });
-        setNum(row, cBud + 4, m.dBudActFc, { fmt: DELTA, delta: true });
-        if (opts?.bold) {
-          row.eachCell((c) => (c.font = { ...(c.font ?? {}), bold: true }));
-          row.getCell(1).border = { top: { style: 'medium' } };
-        }
-        return row;
-      };
-      plZeile(g.revImportiert ? 'Revenue (Controlling)' : 'Revenue (Tool)', g.revenue, { bold: true });
-      plZeile('COGS', g.cogs);
-      plZeile('Gross Margin', g.grossMargin);
-      // Bruttomarge %-Zeile
-      const pctRow = ws.addRow([]);
-      pctRow.getCell(1).value = 'Bruttomarge %';
-      const setPct = (col: number, v: number | null): void => {
-        if (v === null) return;
-        const c = pctRow.getCell(col);
-        c.value = v / 100;
-        c.numFmt = '0.0%';
-      };
-      istMonate.forEach((p, i) => setPct(2 + i, g.gmPct.istMonate[p] ?? null));
-      setPct(cSumActual, g.gmPct.sumActual);
-      fcMonate.forEach((p, i) => setPct(cFcStart + i, g.gmPct.forecastMonate[p] ?? null));
-      setPct(cSumForecast, g.gmPct.sumForecast);
-      setPct(cBud, g.gmPct.bud);
-      setPct(cBud + 2, g.gmPct.actFc);
-      plZeile('Other Costs', g.otherCosts);
-      plZeile('Operating Result (EBIT)', g.ebit, { bold: true });
-    }
-
     // Spaltenbreiten.
     ws.getColumn(1).width = 24;
     for (let col = 2; col <= cLast; col++) ws.getColumn(col).width = col >= cBud + 3 ? 14 : 10;
