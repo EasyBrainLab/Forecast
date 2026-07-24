@@ -331,12 +331,6 @@ export default function ImportPage() {
         accept=".csv"
       />
       <ImportKachel
-        titel="P&L-Kosten (Controlling-Excel)"
-        beschreibung="Forecast JJJJ.MM Therapy.xlsx — COGS & Other Costs (Actual + Budget), BU-gesamt je Monat, für die EBIT-Sicht in der Konsolidierung. Voll-Ersatz je Jahr; Jahr aus dem Dateinamen."
-        endpoint="/pl-kosten/import"
-        accept=".xlsx"
-      />
-      <ImportKachel
         titel="GuV (Controlling)"
         beschreibung="GuV JJJJ.MM Therapy.xlsx — detaillierte P&L (YTD) mit IST / Vorjahr / Budget. Speist das GuV-Panel der Konsolidierung. Voll-Ersatz je Jahr; Jahr & Stichtag aus dem Dateinamen."
         endpoint="/pl-kosten/guv-import"
