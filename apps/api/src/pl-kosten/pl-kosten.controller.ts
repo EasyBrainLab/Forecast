@@ -8,6 +8,7 @@ import { CurrentUser, type RequestUser } from '../common/decorators/current-user
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { PlKostenImportService } from './pl-kosten-import.service';
+import { GuvImportService } from './guv-import.service';
 
 interface UploadFile {
   buffer: Buffer;
@@ -27,9 +28,20 @@ class ZielmargeDto {
 export class PlKostenController {
   constructor(
     private readonly importService: PlKostenImportService,
+    private readonly guvImportService: GuvImportService,
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
   ) {}
+
+  /** Detaillierte Controlling-GuV (YTD, IST/PY/BUD) importieren — speist das GuV-Panel der Konsolidierung. */
+  @Roles('BU_LEITER', 'ADMIN')
+  @Post('guv-import')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024 } }))
+  async guvImport(@UploadedFile() file: UploadFile, @Query('jahr') jahr: string, @Query('monat') monat: string, @CurrentUser() aktor: RequestUser) {
+    if (!file) throw new BadRequestException('Keine Datei übergeben.');
+    return this.guvImportService.importiere(file.buffer, file.originalname, Number(jahr) || null, Number(monat) || null, { id: aktor.id, email: aktor.email });
+  }
 
   @Roles('BU_LEITER', 'ADMIN')
   @Post('import')

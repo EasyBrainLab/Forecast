@@ -387,6 +387,26 @@ export class ExportService {
     ws.getColumn(1).width = 24;
     for (let col = 2; col <= cLast; col++) ws.getColumn(col).width = col >= cBud + 3 ? 14 : 10;
 
+    // Zweites Blatt: detaillierte GuV (Controlling, YTD IST/PY/BUD) — sofern importiert.
+    if (k.guvPanel) {
+      const gws = wb.addWorksheet('GuV Controlling');
+      gws.getColumn(1).width = 32;
+      for (let c = 2; c <= 6; c++) gws.getColumn(c).width = 13;
+      gws.mergeCells(1, 1, 1, 6);
+      gws.getCell(1, 1).value = `GuV — Controlling (YTD ${k.jahr}) — kEUR`;
+      gws.getCell(1, 1).font = { bold: true, size: 13, color: { argb: `FF${PRIMARY}` } };
+      const gh = gws.addRow(['Position', 'IST', 'Vorjahr', 'Δ VJ', 'Budget', 'Δ BUD']);
+      gh.eachCell((c) => (c.font = { bold: true }));
+      for (const p of k.guvPanel.positionen) {
+        const row = gws.addRow([p.label, p.ist / 1000, p.py / 1000, (p.ist - p.py) / 1000, p.bud / 1000, (p.ist - p.bud) / 1000]);
+        for (let c = 2; c <= 6; c++) row.getCell(c).numFmt = '#,##0;-#,##0';
+        if (p.ebene === 0) {
+          row.eachCell((c) => (c.font = { ...(c.font ?? {}), bold: true }));
+          if (p.key === 'OPERATING_RESULT' || p.key === 'EBIT') row.getCell(1).border = { top: { style: 'medium' } };
+        }
+      }
+    }
+
     const arr = await wb.xlsx.writeBuffer();
     return Buffer.from(arr);
   }

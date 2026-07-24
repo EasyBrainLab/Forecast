@@ -40,6 +40,18 @@ interface Guv {
     bud: number | null;
   };
 }
+interface GuvPanelPos {
+  key: string;
+  label: string;
+  ebene: number;
+  ist: number;
+  py: number;
+  bud: number;
+}
+interface GuvPanel {
+  stichtagMonat: number;
+  positionen: GuvPanelPos[];
+}
 interface KonsMonat {
   jahr: number;
   stichtag: string;
@@ -47,6 +59,7 @@ interface KonsMonat {
   restAbMonat: number; // Monate mit Nummer >= restAbMonat sind Forecast, < sind Ist
   zeilen: Zeile[];
   guv: Guv;
+  guvPanel: GuvPanel | null;
 }
 
 const monatNr = (p: string) => Number(p.slice(5));
@@ -325,6 +338,50 @@ export default function KonsolidierungPage() {
             </span>
           </div>
           <QuellHinweis arten={['ist', 'budget']} />
+        </Card>
+      )}
+
+      {data?.guvPanel && (
+        <Card className="space-y-2 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-ez-primary">
+              GuV — Controlling (YTD Jan–{MONATS_KURZ[data.guvPanel.stichtagMonat - 1]} {data.jahr})
+            </h2>
+            <span className="text-xs text-gray-400">Detaillierte Controlling-P&amp;L · Werte in kEUR</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs tabular-nums">
+              <thead>
+                <tr className="border-b border-gray-200 text-gray-500">
+                  <th className="py-1 text-left">Position</th>
+                  <th className="py-1 text-right">IST</th>
+                  <th className="py-1 text-right">Vorjahr</th>
+                  <th className="py-1 text-right">Δ VJ</th>
+                  <th className="py-1 text-right">Budget</th>
+                  <th className="py-1 text-right">Δ BUD</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.guvPanel.positionen.map((p) => {
+                  const sub = p.ebene === 0;
+                  const stark = p.key === 'OPERATING_RESULT' || p.key === 'EBIT';
+                  return (
+                    <tr key={p.key} className={`border-t border-gray-100 ${sub ? 'font-semibold' : 'text-gray-600'} ${stark ? 'border-t-2 border-gray-400' : ''} ${p.key === 'OPERATING_RESULT' ? 'text-ez-primary' : ''}`}>
+                      <td className={`py-1 ${sub ? '' : 'pl-3'}`}>{p.label}</td>
+                      <td className="py-1 text-right">{f0(p.ist)}</td>
+                      <td className="py-1 text-right text-gray-500">{f0(p.py)}</td>
+                      <td className="py-1 text-right">{delta(p.ist - p.py)}</td>
+                      <td className="py-1 text-right text-gray-500">{f0(p.bud)}</td>
+                      <td className="py-1 text-right">{delta(p.ist - p.bud)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-gray-400">
+            Authoritative Controlling-GuV (Jahr-zu-Datum). Δ = IST − Vergleich. Ergänzt die Monatssicht oben (Ist-COGS &amp; Operating result decken sich). Monatlicher Import: „Import → GuV (Controlling)".
+          </p>
         </Card>
       )}
     </div>

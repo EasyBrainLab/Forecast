@@ -465,6 +465,7 @@ model ImportBatch {
   positionen    Verkaufsrechnungsposition[]
   liefermengen  Liefermenge[]
   plKosten      PlKosten[]
+  guvPositionen GuvPosition[]
 
   @@index([hash])
   @@index([status])
@@ -832,6 +833,29 @@ model PlKosten {
   @@unique([jahr, monat, art, kennzahlTyp])
   @@index([jahr])
   @@map("pl_kosten")
+}
+
+/// GuV-Snapshot (YTD) aus der Controlling-P&L „GuV JJJJ.MM Therapy.xlsx": je Position die volle Bruecke
+/// (Revenue -> COGS -> ... -> EBIT Adj.) mit IST (YTD) / PY / BUD. BU-gesamt, Voll-Ersatz je Jahr. Werte voller EUR.
+model GuvPosition {
+  id            String   @id @default(uuid())
+  jahr          Int
+  stichtagMonat Int // YTD-Stichtag (1..12)
+  positionKey   String
+  label         String
+  sortierung    Int
+  ebene         Int // 0 = Zwischensumme/Ergebnis, 1 = Kostenblock
+  istEur        Decimal  @db.Decimal(15, 2)
+  pyEur         Decimal  @db.Decimal(15, 2)
+  budEur        Decimal  @db.Decimal(15, 2)
+  importBatchId String?
+  erstelltAm    DateTime @default(now())
+
+  importBatch ImportBatch? @relation(fields: [importBatchId], references: [id])
+
+  @@unique([jahr, positionKey])
+  @@index([jahr])
+  @@map("guv_position")
 }
 
 // ─────────────── TENDER / AUSSCHREIBUNGEN (fristen-getrieben; Reminder via Scheduler) ───────────────
