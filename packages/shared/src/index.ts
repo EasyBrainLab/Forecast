@@ -5,6 +5,7 @@ export * from './constants';
 // Domain (framework-frei, 100 % Unit-Coverage)
 export * from './domain/parse-decimal-de';
 export * from './domain/yee';
+export * from './domain/guv-forecast';
 export * from './domain/abweichung';
 export * from './domain/schwellwert';
 export * from './domain/tender-reminder';

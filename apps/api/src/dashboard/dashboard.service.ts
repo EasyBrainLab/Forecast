@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { EINSTELLUNG_KEYS, formatPeriode, type MonatswerteRest } from '@forecast/shared';
+import { EINSTELLUNG_KEYS, formatPeriode, berechneGuvForecast, type MonatswerteRest } from '@forecast/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ScopeService } from '../scope/scope.service';
@@ -400,14 +400,22 @@ export class DashboardService {
       budgetMonate: budMap.get(e.id) ?? {},
     }));
 
-    // Detailliertes GuV-Panel (Controlling-Snapshot, YTD IST/PY/BUD) — Single Source of Truth für die P&L/EBIT-Sicht.
-    const guvRows = await this.prisma.guvPosition.findMany({ where: { jahr }, orderBy: { sortierung: 'asc' } });
-    const guvPanel = guvRows.length
-      ? {
-          stichtagMonat: guvRows[0].stichtagMonat,
-          positionen: guvRows.map((p) => ({ key: p.positionKey, label: p.label, ebene: p.ebene, ist: Number(p.istEur), py: Number(p.pyEur), bud: Number(p.budEur) })),
-        }
-      : null;
+    // Detaillierte GuV-Snapshots (Controlling, YTD IST/PY/BUD). Es können mehrere Monatsstände
+    // (stichtagMonat) vorliegen — das Panel zeigt den JÜNGSTEN, die Monatsscheibe unten bildet Differenzen.
+    const guvRows = await this.prisma.guvPosition.findMany({ where: { jahr }, orderBy: [{ stichtagMonat: 'asc' }, { sortierung: 'asc' }] });
+    const guvStichtage = [...new Set(guvRows.map((r) => r.stichtagMonat))].sort((a, b) => a - b);
+    const letzterGuvMonat = guvStichtage.length ? guvStichtage[guvStichtage.length - 1] : null;
+    const guvPanel =
+      letzterGuvMonat != null
+        ? {
+            stichtagMonat: letzterGuvMonat,
+            positionen: guvRows
+              .filter((p) => p.stichtagMonat === letzterGuvMonat)
+              .map((p) => ({ key: p.positionKey, label: p.label, ebene: p.ebene, ist: Number(p.istEur), py: Number(p.pyEur), bud: Number(p.budEur) })),
+          }
+        : null;
+
+    const guvForecast = this.guvForecastBlock(fcMap, istGrenze, guvRows, guvStichtage, await this.guvPlanByMonat(jahr));
 
     return {
       jahr,
@@ -416,6 +424,171 @@ export class DashboardService {
       restAbMonat: istGrenze, // Monate mit Nummer >= restAbMonat sind Forecast, < sind Ist
       zeilen,
       guvPanel,
+      guvForecast,
+    };
+  }
+
+  private async guvPlanByMonat(jahr: number): Promise<Map<number, { grossMarginPct: number | null; otherCostsEur: number | null; fteAnzahl: number | null }>> {
+    const rows = await this.prisma.guvPlan.findMany({ where: { jahr } });
+    const m = new Map<number, { grossMarginPct: number | null; otherCostsEur: number | null; fteAnzahl: number | null }>();
+    for (const r of rows) {
+      m.set(r.monat, {
+        grossMarginPct: r.grossMarginPct == null ? null : Number(r.grossMarginPct),
+        otherCostsEur: r.otherCostsEur == null ? null : Number(r.otherCostsEur),
+        fteAnzahl: r.fteAnzahl == null ? null : Number(r.fteAnzahl),
+      });
+    }
+    return m;
+  }
+
+  /**
+   * Monatliche G&V-Planung (Zielansicht „Forecast Therapy"): pro Monat Umsatz, Gross Margin (%/abs),
+   * COGS, Other Costs, Operating Result, FTE + Revenue/FTE.
+   * - Abgeschlossene Monate: 1:1 aus der Controlling-GuV (authoritative) — Monatsscheibe = Differenz
+   *   aufeinanderfolgender YTD-Stände; ∑-YTD-Spalte = jüngster GuV-Stand (Operating Result == GuV-Panel).
+   * - Offene Monate: Umsatz aus dem Tool-Forecast; GM% und Other Costs aus der BU-Planung (GuvPlan);
+   *   GM absolut = Forecast-Umsatz × GM%, Operating Result berechnet.
+   * FTE ist in der GuV nicht enthalten → immer manuell (GuvPlan), für alle Monate.
+   */
+  private guvForecastBlock(
+    fcMap: Map<string, Record<string, number>>,
+    istGrenze: number,
+    guvRows: { stichtagMonat: number; positionKey: string; istEur: Prisma.Decimal }[],
+    guvStichtage: number[],
+    plan: Map<number, { grossMarginPct: number | null; otherCostsEur: number | null; fteAnzahl: number | null }>,
+  ) {
+    // Forecast-Umsatz je Monat aus dem Tool (>= istGrenze), über alle E1 summiert.
+    const revByMonat = (map: Map<string, Record<string, number>>): Map<number, number> => {
+      const out = new Map<number, number>();
+      for (const [, rec] of map) {
+        for (const [periode, eur] of Object.entries(rec)) {
+          const m = Number(periode.slice(5, 7));
+          out.set(m, (out.get(m) ?? 0) + (eur ?? 0));
+        }
+      }
+      return out;
+    };
+    const revFc = revByMonat(fcMap);
+
+    // YTD-Wert je Monatsstand & Position (voller EUR). guvYtd(m, key) = YTD am Stichtag m.
+    const guvByMonat = new Map<number, Map<string, number>>();
+    for (const r of guvRows) {
+      const mm = guvByMonat.get(r.stichtagMonat) ?? new Map<string, number>();
+      mm.set(r.positionKey, Number(r.istEur));
+      guvByMonat.set(r.stichtagMonat, mm);
+    }
+    const ytd = (m: number, key: string): number => guvByMonat.get(m)?.get(key) ?? 0;
+    const sliceVorhanden = (m: number): boolean => guvByMonat.has(m) && (m === 1 || guvByMonat.has(m - 1));
+    const slice = (m: number, key: string): number => ytd(m, key) - (m === 1 ? 0 : ytd(m - 1, key));
+
+    const letzterGuvMonat = guvStichtage.length ? guvStichtage[guvStichtage.length - 1] : null;
+    // GuV-YTD (jüngster Stand) — liefert die IST-Marge (%) und die IST-Other-Costs.
+    const guvRevYtd = letzterGuvMonat ? ytd(letzterGuvMonat, 'REVENUE') : 0;
+    const guvGmYtd = letzterGuvMonat ? ytd(letzterGuvMonat, 'GROSS_MARGIN') : 0;
+    const guvOpYtd = letzterGuvMonat ? ytd(letzterGuvMonat, 'OPERATING_RESULT') : 0;
+    const guvOtherYtd = guvOpYtd - guvGmYtd; // absolute Other Costs YTD (negativ)
+    const gmPctYtd = letzterGuvMonat && guvRevYtd ? (guvGmYtd / guvRevYtd) * 100 : null;
+
+    // Ist-YTD 1:1 aus dem jüngsten GuV-Stand (authoritative — deckt sich mit dem GuV-Panel).
+    const istYtd =
+      letzterGuvMonat != null
+        ? {
+            bisMonat: letzterGuvMonat,
+            revenueEur: round2(guvRevYtd),
+            grossMarginPct: gmPctYtd == null ? null : round2(gmPctYtd),
+            grossMarginEur: round2(guvGmYtd),
+            otherCostsEur: round2(guvOtherYtd),
+            operatingResultEur: round2(guvOpYtd),
+          }
+        : null;
+
+    let alleForecastGeplant = true;
+    const monate = Array.from({ length: 12 }, (_, i) => {
+      const m = i + 1;
+      const abgeschlossen = m < istGrenze;
+      const p = plan.get(m);
+      const fte = p?.fteAnzahl ?? null;
+
+      let revenueEur: number | null = null;
+      let grossMarginPct: number | null = null;
+      let grossMarginEur: number | null = null;
+      let cogsEur: number | null = null;
+      let otherCostsEur: number | null = null;
+      let operatingResultEur: number | null = null;
+      let istVorhanden = false;
+
+      if (abgeschlossen) {
+        // Ist 1:1 aus der GuV-Monatsscheibe (Differenz aufeinanderfolgender YTD-Stände).
+        if (sliceVorhanden(m)) {
+          revenueEur = round2(slice(m, 'REVENUE'));
+          grossMarginEur = round2(slice(m, 'GROSS_MARGIN'));
+          cogsEur = round2(slice(m, 'COGS'));
+          operatingResultEur = round2(slice(m, 'OPERATING_RESULT'));
+          otherCostsEur = round2(operatingResultEur - grossMarginEur);
+          grossMarginPct = revenueEur ? round2((grossMarginEur / revenueEur) * 100) : null;
+          istVorhanden = true;
+        }
+        // sonst: Monatsscheibe (noch) nicht ableitbar → Zellen leer; ∑-YTD zeigt den GuV-Stand.
+      } else {
+        // Forecast: Tool-Umsatz × geplante GM% − geplante Other Costs.
+        revenueEur = round2(revFc.get(m) ?? 0);
+        grossMarginPct = p?.grossMarginPct ?? null;
+        otherCostsEur = p?.otherCostsEur ?? null;
+        const b = berechneGuvForecast({ revenueEur, grossMarginPct, otherCostsEur });
+        grossMarginEur = b.grossMarginEur == null ? null : round2(b.grossMarginEur);
+        cogsEur = b.cogsEur == null ? null : round2(b.cogsEur);
+        operatingResultEur = b.operatingResultEur == null ? null : round2(b.operatingResultEur);
+        if (grossMarginPct == null) alleForecastGeplant = false;
+      }
+
+      const revenueProFteEur = fte && fte > 0 && revenueEur != null ? round2((revenueEur * 12) / fte) : null;
+      return {
+        monat: m,
+        quelle: abgeschlossen ? ('IST' as const) : ('FORECAST' as const),
+        editierbar: !abgeschlossen, // GM%/Other Costs editierbar in offenen Monaten; FTE immer (separat)
+        istVorhanden,
+        revenueEur,
+        grossMarginPct,
+        grossMarginEur,
+        cogsEur,
+        otherCostsEur,
+        operatingResultEur,
+        fte,
+        revenueProFteEur,
+      };
+    });
+
+    // FY-Projektion = Ist-YTD (1:1 GuV) + geplanter Forecast-Rest.
+    const fcMonate = monate.filter((mm) => mm.quelle === 'FORECAST');
+    const fyRevenueEur = round2((istYtd?.revenueEur ?? 0) + fcMonate.reduce((s, mm) => s + (mm.revenueEur ?? 0), 0));
+    const istGmPortion = istYtd?.grossMarginEur ?? null;
+    const fcGmPortion = fcMonate.reduce((s, mm) => s + (mm.grossMarginEur ?? 0), 0);
+    const istOtherPortion = istYtd?.otherCostsEur ?? 0;
+    const fcOtherPortion = fcMonate.reduce((s, mm) => s + (mm.otherCostsEur ?? 0), 0);
+    const fyGrossMarginEur = istGmPortion == null ? null : round2(istGmPortion + fcGmPortion);
+    const fyOtherCostsEur = round2(istOtherPortion + fcOtherPortion);
+    const fyOperatingResultEur = fyGrossMarginEur == null ? null : round2(fyGrossMarginEur + fyOtherCostsEur);
+    const fyGrossMarginPct = fyGrossMarginEur != null && fyRevenueEur ? round2((fyGrossMarginEur / fyRevenueEur) * 100) : null;
+    const fteWerte = monate.map((mm) => mm.fte).filter((x): x is number => x != null && x > 0);
+    const fyFte = fteWerte.length ? round2(fteWerte.reduce((s, x) => s + x, 0) / fteWerte.length) : null;
+    const fyRevenueProFteEur = fyFte ? round2(fyRevenueEur / fyFte) : null;
+
+    return {
+      istBoundary: istGrenze, // Monate < istBoundary = abgeschlossen
+      letzterGuvMonat,
+      planungVollstaendig: istYtd != null && alleForecastGeplant,
+      istYtd,
+      monate,
+      fy: {
+        revenueEur: fyRevenueEur,
+        grossMarginPct: fyGrossMarginPct,
+        grossMarginEur: fyGrossMarginEur,
+        cogsEur: fyGrossMarginEur == null ? null : round2(fyGrossMarginEur - fyRevenueEur),
+        otherCostsEur: fyOtherCostsEur,
+        operatingResultEur: fyOperatingResultEur,
+        fte: fyFte,
+        revenueProFteEur: fyRevenueProFteEur,
+      },
     };
   }
 
