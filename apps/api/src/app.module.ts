@@ -27,6 +27,7 @@ import { LiefermengeModule } from './liefermenge/liefermenge.module';
 import { PlKostenModule } from './pl-kosten/pl-kosten.module';
 import { AgmStatementModule } from './agm-statement/agm-statement.module';
 import { SalesFlashModule } from './sales-flash/sales-flash.module';
+import { SalesFlashUmsatzModule } from './sales-flash-umsatz/sales-flash-umsatz.module';
 import { PeriodeModule } from './periode/periode.module';
 import { TenderModule } from './tender/tender.module';
 import { CompetitorModule } from './competitor/competitor.module';
@@ -67,6 +68,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
     PlKostenModule,
     AgmStatementModule,
     SalesFlashModule,
+    SalesFlashUmsatzModule,
     PeriodeModule,
     TenderModule,
     CompetitorModule,
