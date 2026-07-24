@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 export type Richtung = 'steigerung' | 'rueckgang' | 'beide';
+/** Umsatzquelle: D365-Rechnungen (brutto fakturiert, mit Menge/Preis) oder Controlling-„Sales Flash" (Netto, ohne Menge/Preis). */
+export type Quelle = 'D365' | 'CONTROLLING';
 
 const clamp = (n: number, min: number, max: number, def: number): number => (Number.isFinite(n) ? Math.min(Math.max(n, min), max) : def);
 
@@ -24,7 +26,11 @@ export class SalesAnalytikService {
   }
 
   /** Filter-Optionen für die UI: verfügbare Jahre und Währungen. */
-  async filteroptionen(): Promise<{ jahre: number[]; waehrungen: { waehrung: string; anzahl: number }[] }> {
+  async filteroptionen(quelle: Quelle = 'D365'): Promise<{ jahre: number[]; waehrungen: { waehrung: string; anzahl: number }[] }> {
+    if (quelle === 'CONTROLLING') {
+      const jahre = await this.prisma.$queryRaw<{ jahr: number }[]>`SELECT DISTINCT jahr FROM sales_flash_umsatz ORDER BY jahr DESC`;
+      return { jahre: jahre.map((j) => j.jahr), waehrungen: [{ waehrung: 'EUR', anzahl: 0 }] };
+    }
     const jahre = await this.prisma.$queryRaw<{ jahr: number }[]>`
       SELECT DISTINCT EXTRACT(YEAR FROM rechnungsdatum)::int AS jahr
       FROM verkaufsrechnung_position ORDER BY jahr DESC`;
@@ -34,16 +40,30 @@ export class SalesAnalytikService {
     return { jahre: jahre.map((j) => j.jahr), waehrungen };
   }
 
-  /** Kundenliste (aus dem Stamm) für Filter/Picker. */
-  async kunden(): Promise<{ dataAreaId: string; kundennummer: string; name: string }[]> {
+  /** Kundenliste für Filter/Picker. CONTROLLING: aktive Umsatzkunden aus der Sales-Flash-Datei (Name aus Kundenstamm, sonst Datei). */
+  async kunden(quelle: Quelle = 'D365'): Promise<{ dataAreaId: string; kundennummer: string; name: string }[]> {
+    if (quelle === 'CONTROLLING') {
+      return this.prisma.$queryRaw<{ dataAreaId: string; kundennummer: string; name: string }[]>`
+        SELECT s."dataAreaId", s.debitornr AS kundennummer, COALESCE(k.name, MAX(s.kundenname)) AS name
+        FROM sales_flash_umsatz s
+        LEFT JOIN kundenstamm k ON k."dataAreaId" = s."dataAreaId" AND k.kundennummer = s.debitornr
+        GROUP BY s."dataAreaId", s.debitornr, k.name
+        ORDER BY name ASC`;
+    }
     return this.prisma.kundenstamm.findMany({
       select: { dataAreaId: true, kundennummer: true, name: true },
       orderBy: { name: 'asc' },
     });
   }
 
-  /** Produktliste (aus den Positionen) für Filter/Picker. */
-  async produkte(): Promise<{ produktnummer: string; produktname: string | null; anzahl: number }[]> {
+  /** Produkt-/Artikelliste für Filter/Picker. */
+  async produkte(quelle: Quelle = 'D365'): Promise<{ produktnummer: string; produktname: string | null; anzahl: number }[]> {
+    if (quelle === 'CONTROLLING') {
+      return this.prisma.$queryRaw`
+        SELECT "articleNr" AS produktnummer, MAX("articleName") AS produktname, COUNT(*)::int AS anzahl
+        FROM sales_flash_umsatz WHERE "articleNr" IS NOT NULL
+        GROUP BY "articleNr" ORDER BY "articleNr" ASC`;
+    }
     return this.prisma.$queryRaw`
       SELECT produktnummer, MAX(produktname) AS produktname, COUNT(*)::int AS anzahl
       FROM verkaufsrechnung_position
@@ -96,26 +116,35 @@ export class SalesAnalytikService {
   }
 
   /** Umsatzveränderung je Kunde zwischen zwei Jahren (Ranking Steigerung/Rückgang). */
-  async umsatzveraenderung(opt: { jahrVon: number; jahrBis: number; richtung?: Richtung; waehrung?: string; limit?: number }) {
+  async umsatzveraenderung(opt: { jahrVon: number; jahrBis: number; richtung?: Richtung; waehrung?: string; limit?: number; quelle?: Quelle }) {
     const jahrVon = clamp(Number(opt.jahrVon), 2000, 2100, 2020);
     const jahrBis = clamp(Number(opt.jahrBis), 2000, 2100, 2026);
     const limit = clamp(Number(opt.limit), 1, 200, 25);
     const richtung: Richtung = ['steigerung', 'rueckgang', 'beide'].includes(opt.richtung as string) ? (opt.richtung as Richtung) : 'beide';
     const waehrung = (opt.waehrung || 'EUR').toUpperCase();
-    const rows = await this.prisma.$queryRaw<{ dataAreaId: string; kundennummer: string; von: number; bis: number }[]>`
-      SELECT "dataAreaId", kundennummer,
-             COALESCE(SUM(betrag) FILTER (WHERE EXTRACT(YEAR FROM rechnungsdatum) = ${jahrVon}), 0)::float8 AS von,
-             COALESCE(SUM(betrag) FILTER (WHERE EXTRACT(YEAR FROM rechnungsdatum) = ${jahrBis}), 0)::float8 AS bis
-      FROM verkaufsrechnung_position
-      WHERE waehrung = ${waehrung} AND EXTRACT(YEAR FROM rechnungsdatum) IN (${jahrVon}, ${jahrBis})
-      GROUP BY "dataAreaId", kundennummer`;
+    const controlling = opt.quelle === 'CONTROLLING';
+    const rows = controlling
+      ? await this.prisma.$queryRaw<{ dataAreaId: string; kundennummer: string; sfname: string; von: number; bis: number }[]>`
+          SELECT s."dataAreaId", s.debitornr AS kundennummer, MAX(s.kundenname) AS sfname,
+                 COALESCE(SUM(s."betragEur") FILTER (WHERE s.jahr = ${jahrVon}), 0)::float8 AS von,
+                 COALESCE(SUM(s."betragEur") FILTER (WHERE s.jahr = ${jahrBis}), 0)::float8 AS bis
+          FROM sales_flash_umsatz s
+          WHERE s.jahr IN (${jahrVon}, ${jahrBis})
+          GROUP BY s."dataAreaId", s.debitornr`
+      : await this.prisma.$queryRaw<{ dataAreaId: string; kundennummer: string; sfname: null; von: number; bis: number }[]>`
+          SELECT "dataAreaId", kundennummer, NULL AS sfname,
+                 COALESCE(SUM(betrag) FILTER (WHERE EXTRACT(YEAR FROM rechnungsdatum) = ${jahrVon}), 0)::float8 AS von,
+                 COALESCE(SUM(betrag) FILTER (WHERE EXTRACT(YEAR FROM rechnungsdatum) = ${jahrBis}), 0)::float8 AS bis
+          FROM verkaufsrechnung_position
+          WHERE waehrung = ${waehrung} AND EXTRACT(YEAR FROM rechnungsdatum) IN (${jahrVon}, ${jahrBis})
+          GROUP BY "dataAreaId", kundennummer`;
     const map = await this.kundennameMap();
     let ergebnis = rows.map((r) => {
       const delta = r.bis - r.von;
       return {
         dataAreaId: r.dataAreaId,
         kundennummer: r.kundennummer,
-        kundenname: this.name(map, r.dataAreaId, r.kundennummer),
+        kundenname: this.name(map, r.dataAreaId, r.kundennummer) ?? r.sfname,
         umsatzVon: Math.round(r.von * 100) / 100,
         umsatzBis: Math.round(r.bis * 100) / 100,
         deltaEur: Math.round(delta * 100) / 100,
@@ -125,22 +154,36 @@ export class SalesAnalytikService {
     if (richtung === 'steigerung') ergebnis = ergebnis.filter((e) => e.deltaEur > 0).sort((a, b) => b.deltaEur - a.deltaEur);
     else if (richtung === 'rueckgang') ergebnis = ergebnis.filter((e) => e.deltaEur < 0).sort((a, b) => a.deltaEur - b.deltaEur);
     else ergebnis = ergebnis.sort((a, b) => Math.abs(b.deltaEur) - Math.abs(a.deltaEur));
-    return { typ: 'umsatzveraenderung' as const, parameter: { jahrVon, jahrBis, richtung, waehrung }, zeilen: ergebnis.slice(0, limit) };
+    return { typ: 'umsatzveraenderung' as const, parameter: { jahrVon, jahrBis, richtung, waehrung, quelle: controlling ? 'CONTROLLING' : 'D365' }, zeilen: ergebnis.slice(0, limit) };
   }
 
-  /** Zeitreihe (Umsatz/Menge/Ø-Preis je Jahr) für einen Kunden, optional je Produkt. */
-  async kundenzeitreihe(opt: { dataAreaId: string; kundennummer: string; produktnummer?: string; waehrung?: string }) {
+  /** Zeitreihe je Jahr für einen Kunden, optional je Produkt. D365: Umsatz/Menge/Ø-Preis; CONTROLLING: nur Umsatz (netto). */
+  async kundenzeitreihe(opt: { dataAreaId: string; kundennummer: string; produktnummer?: string; waehrung?: string; quelle?: Quelle }) {
     const waehrung = (opt.waehrung || 'EUR').toUpperCase();
+    const map = await this.kundennameMap();
+    if (opt.quelle === 'CONTROLLING') {
+      const artikelFilter = opt.produktnummer ? Prisma.sql`AND "articleNr" = ${opt.produktnummer}` : Prisma.empty;
+      const rows = await this.prisma.$queryRaw<{ jahr: number; umsatz: number }[]>`
+        SELECT jahr, SUM("betragEur")::float8 AS umsatz
+        FROM sales_flash_umsatz
+        WHERE "dataAreaId" = ${opt.dataAreaId} AND debitornr = ${opt.kundennummer} ${artikelFilter}
+        GROUP BY jahr ORDER BY jahr ASC`;
+      const sf = await this.prisma.salesFlashUmsatz.findFirst({ where: { dataAreaId: opt.dataAreaId, debitornr: opt.kundennummer }, select: { kundenname: true } });
+      return {
+        typ: 'kundenzeitreihe' as const,
+        parameter: { dataAreaId: opt.dataAreaId, kundennummer: opt.kundennummer, kundenname: this.name(map, opt.dataAreaId, opt.kundennummer) ?? sf?.kundenname ?? null, produktnummer: opt.produktnummer ?? null, waehrung, quelle: 'CONTROLLING' },
+        zeilen: rows.map((r) => ({ jahr: r.jahr, umsatz: Math.round(r.umsatz * 100) / 100, menge: null, durchschnittspreis: null })),
+      };
+    }
     const produktFilter = opt.produktnummer ? Prisma.sql`AND produktnummer = ${opt.produktnummer}` : Prisma.empty;
     const rows = await this.prisma.$queryRaw<{ jahr: number; umsatz: number; menge: number }[]>`
       SELECT EXTRACT(YEAR FROM rechnungsdatum)::int AS jahr, SUM(betrag)::float8 AS umsatz, SUM(menge)::float8 AS menge
       FROM verkaufsrechnung_position
       WHERE waehrung = ${waehrung} AND "dataAreaId" = ${opt.dataAreaId} AND kundennummer = ${opt.kundennummer} ${produktFilter}
       GROUP BY jahr ORDER BY jahr ASC`;
-    const map = await this.kundennameMap();
     return {
       typ: 'kundenzeitreihe' as const,
-      parameter: { dataAreaId: opt.dataAreaId, kundennummer: opt.kundennummer, kundenname: this.name(map, opt.dataAreaId, opt.kundennummer), produktnummer: opt.produktnummer ?? null, waehrung },
+      parameter: { dataAreaId: opt.dataAreaId, kundennummer: opt.kundennummer, kundenname: this.name(map, opt.dataAreaId, opt.kundennummer), produktnummer: opt.produktnummer ?? null, waehrung, quelle: 'D365' },
       zeilen: rows.map((r) => ({
         jahr: r.jahr,
         umsatz: Math.round(r.umsatz * 100) / 100,

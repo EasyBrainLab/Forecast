@@ -460,6 +460,7 @@ model ImportBatch {
   positionen    Verkaufsrechnungsposition[]
   liefermengen  Liefermenge[]
   guvPositionen GuvPosition[]
+  salesFlashUmsaetze SalesFlashUmsatz[]
 
   @@index([hash])
   @@index([status])
@@ -850,6 +851,39 @@ model GuvPlan {
   @@unique([jahr, monat])
   @@index([jahr])
   @@map("guv_plan")
+}
+
+/// Transaktionsscharfer Controlling-Umsatz aus der monatlichen „Therapy Sales Flash"-Datei
+/// (authoritative Controlling-Zahl, Netto inkl. Storni). Voll-Ersatz je Jahr beim Import.
+/// Kunden-Identität = (dataAreaId, debitornr), verknüpfbar mit Kundenstamm (kundennummer).
+model SalesFlashUmsatz {
+  id            String   @id @default(uuid())
+  jahr          Int
+  monat         Int // 1..12
+  dataAreaId    String // Company (BBD/BBE/BBF)
+  debitornr     String // Debitornr (z. B. D000129) — Kundenschlüssel
+  kundenname    String // Klartext aus der Datei (Fallback, falls Debitor nicht im Kundenstamm)
+  articleNr     String? // Article (SKU/Sachkonto-Artikel)
+  articleName   String? // Artikel-Klartext
+  kostenstelle  String? // CostCenter
+  kostentraeger String? // CostObject
+  e1Kategorie   String? // Ebene 1 → E1Kategorie (IMPLANT/OPHTHALMO/AFTERLOADER/OTHER)
+  e2Name        String? // Ebene 2 (Rohtext)
+  regionCode    String? // aus KST-Gruppe abgeleitet
+  landIso       String? // CustomerShipped / Kundensitz
+  rechnungsnr   String? // ms_InvNumber
+  projektnummer String? // Projektnummer
+  betragEur     Decimal  @db.Decimal(15, 2) // Betrag, voller EUR, Netto
+  importBatchId String
+  erstelltAm    DateTime @default(now())
+
+  importBatch ImportBatch @relation(fields: [importBatchId], references: [id])
+
+  @@index([jahr, monat])
+  @@index([dataAreaId, debitornr])
+  @@index([articleNr])
+  @@index([regionCode])
+  @@map("sales_flash_umsatz")
 }
 
 // ─────────────── TENDER / AUSSCHREIBUNGEN (fristen-getrieben; Reminder via Scheduler) ───────────────

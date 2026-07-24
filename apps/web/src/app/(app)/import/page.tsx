@@ -46,6 +46,7 @@ const TYP_LABEL: Record<string, string> = {
   LIEFERMENGE: 'Liefermengen (SOL)',
   PL_KOSTEN: 'P&L-Kosten (Controlling)',
   GUV: 'GuV (Controlling)',
+  SALES_FLASH_UMSATZ: 'Umsatz-Detail (Sales Flash)',
   KUNDENSTAMM: 'Kundenstamm (D365)',
   RECHNUNG: 'Rechnungsköpfe (D365)',
   RECHNUNGSPOSITION: 'Rechnungspositionen (D365)',
@@ -334,6 +335,12 @@ export default function ImportPage() {
         titel="GuV (Controlling)"
         beschreibung="GuV JJJJ.MM Therapy.xlsx — detaillierte P&L (YTD) mit IST / Vorjahr / Budget. Speist das GuV-Panel der Konsolidierung. Voll-Ersatz je Jahr; Jahr & Stichtag aus dem Dateinamen."
         endpoint="/pl-kosten/guv-import"
+        accept=".xlsx"
+      />
+      <ImportKachel
+        titel="Umsatz-Detail (Sales Flash)"
+        beschreibung="Therapy Sales Flash Daten JJJJ+JJJJ.xlsx — transaktionsscharfer Controlling-Umsatz (Debitor, Kunde, Artikel, KST, E1/E2, Region) je Monat. Speist die Sales-Analytik (Quelle Controlling). Voll-Ersatz je enthaltenem Jahr."
+        endpoint="/sales-flash-umsatz/import"
         accept=".xlsx"
       />
 

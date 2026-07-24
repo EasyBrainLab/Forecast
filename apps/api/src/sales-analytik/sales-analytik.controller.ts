@@ -1,7 +1,9 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../common/decorators/roles.decorator';
-import { SalesAnalytikService, type Richtung } from './sales-analytik.service';
+import { SalesAnalytikService, type Richtung, type Quelle } from './sales-analytik.service';
+
+const q = (v?: string): Quelle => (v === 'CONTROLLING' ? 'CONTROLLING' : 'D365');
 
 @ApiTags('sales-analytik')
 @ApiBearerAuth()
@@ -12,20 +14,20 @@ export class SalesAnalytikController {
 
   @Roles('VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN')
   @Get('filteroptionen')
-  filteroptionen() {
-    return this.service.filteroptionen();
+  filteroptionen(@Query('quelle') quelle?: string) {
+    return this.service.filteroptionen(q(quelle));
   }
 
   @Roles('VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN')
   @Get('kunden')
-  kunden() {
-    return this.service.kunden();
+  kunden(@Query('quelle') quelle?: string) {
+    return this.service.kunden(q(quelle));
   }
 
   @Roles('VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN')
   @Get('produkte')
-  produkte() {
-    return this.service.produkte();
+  produkte(@Query('quelle') quelle?: string) {
+    return this.service.produkte(q(quelle));
   }
 
   @Roles('VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN')
@@ -48,8 +50,9 @@ export class SalesAnalytikController {
     @Query('richtung') richtung?: string,
     @Query('waehrung') waehrung?: string,
     @Query('limit') limit?: string,
+    @Query('quelle') quelle?: string,
   ) {
-    return this.service.umsatzveraenderung({ jahrVon: Number(jahrVon), jahrBis: Number(jahrBis), richtung: richtung as Richtung, waehrung, limit: Number(limit) });
+    return this.service.umsatzveraenderung({ jahrVon: Number(jahrVon), jahrBis: Number(jahrBis), richtung: richtung as Richtung, waehrung, limit: Number(limit), quelle: q(quelle) });
   }
 
   @Roles('VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN')
@@ -59,8 +62,9 @@ export class SalesAnalytikController {
     @Query('kundennummer') kundennummer: string,
     @Query('produktnummer') produktnummer?: string,
     @Query('waehrung') waehrung?: string,
+    @Query('quelle') quelle?: string,
   ) {
-    return this.service.kundenzeitreihe({ dataAreaId, kundennummer, produktnummer, waehrung });
+    return this.service.kundenzeitreihe({ dataAreaId, kundennummer, produktnummer, waehrung, quelle: q(quelle) });
   }
 
   @Roles('VERTRIEBSLEITER', 'BU_LEITER', 'ADMIN')

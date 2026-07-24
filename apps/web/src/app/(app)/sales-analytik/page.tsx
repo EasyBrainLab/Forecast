@@ -11,6 +11,7 @@ const nz = (v: unknown): number => (typeof v === 'number' ? v : 0);
 const zeit = (v: unknown): number => (v ? new Date(v as string).getTime() : 0);
 
 type Typ = 'preisstabilitaet' | 'umsatzveraenderung' | 'kundenzeitreihe' | 'mengentrend';
+type Quelle = 'D365' | 'CONTROLLING';
 
 const TYP_LABEL: Record<Typ, string> = {
   preisstabilitaet: 'Preisstabilität',
@@ -18,6 +19,8 @@ const TYP_LABEL: Record<Typ, string> = {
   kundenzeitreihe: 'Kunden-Zeitreihe',
   mengentrend: 'Mengentrend',
 };
+// CONTROLLING (Sales-Flash, Netto-Umsatz ohne Menge/Preis) unterstützt nur die umsatzbasierten Auswertungen.
+const CONTROLLING_TABS: Typ[] = ['umsatzveraenderung', 'kundenzeitreihe'];
 const TYP_HINWEIS: Record<Typ, string> = {
   preisstabilitaet: 'Kunden, die für ein Produkt über ≥ N Jahre denselben Preis zahlen.',
   umsatzveraenderung: 'Größte Umsatzsteigerung / -rückgang je Kunde zwischen zwei Jahren.',
@@ -36,6 +39,7 @@ const pct = (v: number | null) => (v === null ? '—' : `${v.toLocaleString('de-
 const dat = (s: string) => new Date(s).toLocaleDateString('de-DE');
 
 export default function SalesAnalytikPage() {
+  const [quelle, setQuelle] = useState<Quelle>('D365');
   const [typ, setTyp] = useState<Typ>('preisstabilitaet');
   const [waehrung, setWaehrung] = useState('EUR');
   const [jahre, setJahre] = useState(3);
@@ -53,11 +57,21 @@ export default function SalesAnalytikPage() {
   const [kiAntwort, setKiAntwort] = useState<{ analyseTyp: string; erklaerung: string; antwort: string } | null>(null);
   const [kiLaedt, setKiLaedt] = useState(false);
 
-  const { data: opt } = useQuery({ queryKey: ['analytik-opt'], queryFn: () => api.get<FilterOpt>('/sales-analytik/filteroptionen') });
-  const { data: kunden } = useQuery({ queryKey: ['analytik-kunden'], queryFn: () => api.get<Kunde[]>('/sales-analytik/kunden') });
-  const { data: produkte } = useQuery({ queryKey: ['analytik-produkte'], queryFn: () => api.get<Produkt[]>('/sales-analytik/produkte') });
+  const { data: opt } = useQuery({ queryKey: ['analytik-opt', quelle], queryFn: () => api.get<FilterOpt>(`/sales-analytik/filteroptionen?quelle=${quelle}`) });
+  const { data: kunden } = useQuery({ queryKey: ['analytik-kunden', quelle], queryFn: () => api.get<Kunde[]>(`/sales-analytik/kunden?quelle=${quelle}`) });
+  const { data: produkte } = useQuery({ queryKey: ['analytik-produkte', quelle], queryFn: () => api.get<Produkt[]>(`/sales-analytik/produkte?quelle=${quelle}`) });
   const jahreOpt = opt?.jahre ?? [2026, 2025, 2024, 2023, 2022, 2021, 2020];
   const waehrungOpt = opt?.waehrungen.map((w) => w.waehrung) ?? ['EUR'];
+  const sichtbareTabs: Typ[] = quelle === 'CONTROLLING' ? CONTROLLING_TABS : (Object.keys(TYP_LABEL) as Typ[]);
+
+  const wechsleQuelle = (nq: Quelle) => {
+    setQuelle(nq);
+    setResult(null);
+    setFehler('');
+    setKundenKey('');
+    setProduktnummer('');
+    if (nq === 'CONTROLLING' && !CONTROLLING_TABS.includes(typ)) setTyp('umsatzveraenderung');
+  };
 
   const auswerten = async () => {
     setFehler('');
@@ -66,13 +80,14 @@ export default function SalesAnalytikPage() {
     try {
       let url = '';
       const w = `waehrung=${waehrung}`;
+      const qp = `&quelle=${quelle}`;
       if (typ === 'preisstabilitaet') url = `/sales-analytik/preisstabilitaet?jahre=${jahre}&toleranzProzent=${toleranz}&${w}${produktnummer ? `&produktnummer=${encodeURIComponent(produktnummer)}` : ''}`;
-      else if (typ === 'umsatzveraenderung') url = `/sales-analytik/umsatzveraenderung?jahrVon=${jahrVon}&jahrBis=${jahrBis}&richtung=${richtung}&${w}`;
+      else if (typ === 'umsatzveraenderung') url = `/sales-analytik/umsatzveraenderung?jahrVon=${jahrVon}&jahrBis=${jahrBis}&richtung=${richtung}&${w}${qp}`;
       else if (typ === 'mengentrend') url = `/sales-analytik/mengentrend?jahrVon=${jahrVon}&jahrBis=${jahrBis}&dimension=${dimension}&richtung=${richtung}&${w}`;
       else {
         if (!kundenKey) { setFehler('Bitte einen Kunden wählen.'); setLaedt(false); return; }
         const [da, nr] = kundenKey.split('|');
-        url = `/sales-analytik/kundenzeitreihe?dataAreaId=${encodeURIComponent(da)}&kundennummer=${encodeURIComponent(nr)}&${w}${produktnummer ? `&produktnummer=${encodeURIComponent(produktnummer)}` : ''}`;
+        url = `/sales-analytik/kundenzeitreihe?dataAreaId=${encodeURIComponent(da)}&kundennummer=${encodeURIComponent(nr)}&${w}${produktnummer ? `&produktnummer=${encodeURIComponent(produktnummer)}` : ''}${qp}`;
       }
       const res = await api.get<{ zeilen: Record<string, unknown>[]; parameter: Record<string, unknown> }>(url);
       setResult(res);
@@ -134,21 +149,41 @@ export default function SalesAnalytikPage() {
       { key: 'delta', label: 'Δ Menge', ...R('right'), value: (z) => nz(z.deltaMenge), render: (z) => num(z.deltaMenge as number) },
       { key: 'deltaP', label: 'Δ %', ...R('right'), value: (z) => nz(z.deltaProzent), render: (z) => pct(z.deltaProzent as number | null) },
     ];
-    return [
+    const zeitreihe: Column<Zeile>[] = [
       { key: 'jahr', label: 'Jahr', ...R('right'), value: (z) => nz(z.jahr), render: (z) => String(z.jahr) },
       { key: 'umsatz', label: 'Umsatz (kEUR)', ...R('right'), value: (z) => nz(z.umsatz), render: (z) => keur(z.umsatz as number) },
+    ];
+    // Menge/Ø-Preis nur bei D365 (im Controlling-Netto-Umsatz nicht enthalten).
+    if (quelle === 'D365') zeitreihe.push(
       { key: 'menge', label: 'Menge', ...R('right'), value: (z) => nz(z.menge), render: (z) => num(z.menge as number) },
       { key: 'preis', label: 'Ø-Preis', ...R('right'), value: (z) => nz(z.durchschnittspreis), render: (z) => num(z.durchschnittspreis as number | null, 2) },
-    ];
-  }, [typ, jahrVon, jahrBis, dimension]);
+    );
+    return zeitreihe;
+  }, [typ, jahrVon, jahrBis, dimension, quelle]);
 
   return (
     <div className="space-y-5">
-      <div>
+      <div className="space-y-2">
         <h1 className="text-2xl font-bold text-ez-primary">Sales-Analytik</h1>
-        <p className="text-sm text-gray-500">Kundenscharfe Auswertungen aus den D365-Rechnungsdaten. Beträge in kEUR; je Auswertung eine Währung (keine Vermischung). Umsatz ist netto inkl. Gutschriften.</p>
+        <p className="text-sm text-gray-500">
+          {quelle === 'D365'
+            ? 'Kundenscharfe Auswertungen aus den D365-Rechnungsdaten (brutto fakturiert, mit Menge/Preis). Beträge in kEUR; je Auswertung eine Währung.'
+            : 'Kundenscharfe Auswertungen auf dem maßgeblichen Controlling-Umsatz (Sales Flash, Netto). Beträge in kEUR. Menge/Preis sind hier nicht enthalten.'}
+        </p>
+        <div className="inline-flex overflow-hidden rounded border border-gray-300 text-sm">
+          {(['D365', 'CONTROLLING'] as Quelle[]).map((qq) => (
+            <button
+              key={qq}
+              onClick={() => wechsleQuelle(qq)}
+              className={`px-3 py-1 ${quelle === qq ? 'bg-ez-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+            >
+              {qq === 'D365' ? 'D365-Rechnungen' : 'Controlling-Umsatz'}
+            </button>
+          ))}
+        </div>
       </div>
 
+      {quelle === 'D365' && (
       <Card className="space-y-2">
         <h2 className="font-semibold text-ez-primary">Frage stellen</h2>
         <div className="flex flex-wrap items-center gap-2">
@@ -169,10 +204,11 @@ export default function SalesAnalytikPage() {
         )}
         <p className="text-xs text-gray-400">Die KI wählt nur eine der Auswertungen unten und deren Parameter — die Zahlen kommen aus der Datenbank, nicht aus dem Sprachmodell.</p>
       </Card>
+      )}
 
       <Card className="space-y-3">
         <div className="flex flex-wrap gap-2">
-          {(Object.keys(TYP_LABEL) as Typ[]).map((t) => (
+          {sichtbareTabs.map((t) => (
             <button
               key={t}
               onClick={() => { setTyp(t); setResult(null); setFehler(''); }}
