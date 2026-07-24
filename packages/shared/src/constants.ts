@@ -140,11 +140,7 @@ export const EINSTELLUNG_KEYS = {
   REPORT_DEADLINE_TAG: 'REPORT_DEADLINE_TAG', // Abgabefrist Monatsbericht: Tag im Folgemonat
   AUDIO_AUFBEWAHRUNG: 'AUDIO_AUFBEWAHRUNG', // Voice-Diktat: SOFORT_LOESCHEN | TAGE_30 | BEHALTEN
   CONTROLLING_EMAILS: 'CONTROLLING_EMAILS', // Komma-Liste: Empfänger für Forecast-Anpassungsmeldungen (Controlling)
-  EBIT_ZIELMARGE_PROZENT: 'EBIT_ZIELMARGE_PROZENT', // Basis-Key; effektiver Schlüssel je Jahr via ebitZielmargeKey()
 } as const;
-
-/** Ziel-Bruttomarge (%) für die EBIT-Forecast-Rechnung — je Jahr eigener Einstellungs-Key. */
-export const ebitZielmargeKey = (jahr: number): string => `${EINSTELLUNG_KEYS.EBIT_ZIELMARGE_PROZENT}_${jahr}`;
 
 export const EINSTELLUNG_DEFAULTS: Readonly<Record<string, string>> = {
   [EINSTELLUNG_KEYS.SCHWELLWERT_PROZENT]: '10',

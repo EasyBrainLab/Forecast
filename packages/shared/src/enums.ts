@@ -31,9 +31,6 @@ export type E1Kategorie = (typeof E1Kategorie)[keyof typeof E1Kategorie];
 export const KennzahlTyp = { REVENUE: 'REVENUE', COGS: 'COGS', OTHER_COSTS: 'OTHER_COSTS' } as const;
 export type KennzahlTyp = (typeof KennzahlTyp)[keyof typeof KennzahlTyp];
 
-export const PlArt = { ACTUAL: 'ACTUAL', BUDGET: 'BUDGET' } as const;
-export type PlArt = (typeof PlArt)[keyof typeof PlArt];
-
 export const BudgetStatus = { AKTIV: 'AKTIV', HISTORISIERT: 'HISTORISIERT' } as const;
 export type BudgetStatus = (typeof BudgetStatus)[keyof typeof BudgetStatus];
 

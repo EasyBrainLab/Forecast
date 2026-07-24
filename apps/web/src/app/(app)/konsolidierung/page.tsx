@@ -1,9 +1,8 @@
 'use client';
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import { api, downloadDatei } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
 import { Button, Card } from '@/components/ui';
 import Link from 'next/link';
 import { QuellHinweis } from '@/components/quell-hinweis';
@@ -15,30 +14,6 @@ interface Zeile {
   istMonate: Record<string, number>;
   forecastMonate: Record<string, number>;
   budgetMonate: Record<string, number>;
-}
-interface GuvLine {
-  istMonate: Record<string, number>;
-  forecastMonate: Record<string, number>;
-  budgetMonate: Record<string, number>;
-}
-interface Guv {
-  vorhanden: boolean;
-  revImportiert: boolean;
-  zielMargeProzent: number;
-  zielMargeQuelle: 'EINSTELLUNG' | 'IST_YTD_DEFAULT' | 'FALLBACK';
-  revenue: GuvLine;
-  cogs: GuvLine;
-  grossMargin: GuvLine;
-  otherCosts: GuvLine;
-  ebit: GuvLine;
-  gmPct: {
-    istMonate: Record<string, number | null>;
-    forecastMonate: Record<string, number | null>;
-    sumActual: number | null;
-    sumForecast: number | null;
-    actFc: number | null;
-    bud: number | null;
-  };
 }
 interface GuvPanelPos {
   key: string;
@@ -58,7 +33,6 @@ interface KonsMonat {
   monate: string[];
   restAbMonat: number; // Monate mit Nummer >= restAbMonat sind Forecast, < sind Ist
   zeilen: Zeile[];
-  guv: Guv;
   guvPanel: GuvPanel | null;
 }
 
@@ -122,46 +96,6 @@ export default function KonsolidierungPage() {
   }, [data, istMonate, fcMonate]);
 
   const delta = (v: number) => <span className={v >= 0 ? 'text-ez-ampelGruen' : 'text-ez-ampelRot'}>{f0(v)}</span>;
-
-  const { user } = useAuth();
-  const qc = useQueryClient();
-  const darfMarge = user?.rolle === 'BU_LEITER' || user?.rolle === 'ADMIN';
-  const [margeInput, setMargeInput] = useState('');
-  const margeMut = useMutation({
-    mutationFn: (prozent: number) => api.patch(`/pl-kosten/zielmarge?jahr=${jahr}`, { prozent }),
-    onSuccess: () => {
-      setMargeInput('');
-      qc.invalidateQueries({ queryKey: ['kons-monatlich', jahr] });
-    },
-  });
-
-  const pctFmt = (v: number | null) => (v === null ? '—' : `${v.toFixed(1)} %`);
-  const plRow = (label: string, line: GuvLine, opts?: { klasse?: string; stickyBg?: string }) => {
-    const m = metrik(line);
-    const bg = opts?.stickyBg ?? 'bg-white';
-    return (
-      <tr className={`border-t border-gray-100 ${opts?.klasse ?? 'text-gray-600'}`}>
-        <td className={`sticky left-0 z-10 ${bg} p-1`}>{label}</td>
-        {istMonate.map((p) => (
-          <td key={p} className="border-l border-gray-200 p-1 text-right">
-            {f0(line.istMonate[p] ?? 0)}
-          </td>
-        ))}
-        <td className="border-l border-gray-300 p-1 text-right">{f0(m.summeActual)}</td>
-        {fcMonate.map((p) => (
-          <td key={p} className="border-l border-gray-200 p-1 text-right">
-            {f0(line.forecastMonate[p] ?? 0)}
-          </td>
-        ))}
-        <td className="border-l border-gray-300 p-1 text-right">{f0(m.summeForecast)}</td>
-        <td className="border-l border-gray-300 p-1 text-right">{f0(m.bud)}</td>
-        <td className="p-1 text-right">{f0(m.actBud)}</td>
-        <td className="p-1 text-right">{f0(m.actFc)}</td>
-        <td className="p-1 text-right">{delta(m.dBudActBud)}</td>
-        <td className="p-1 text-right">{delta(m.dBudActFc)}</td>
-      </tr>
-    );
-  };
 
   const [exportBusy, setExportBusy] = useState(false);
   const [exportFehler, setExportFehler] = useState('');
@@ -287,56 +221,10 @@ export default function KonsolidierungPage() {
                   <td className="p-1 text-right">{delta(totals.dBudActBud)}</td>
                   <td className="p-1 text-right">{delta(totals.dBudActFc)}</td>
                 </tr>
-                {data.guv.vorhanden ? (
-                  <>
-                    {plRow(data.guv.revImportiert ? 'Revenue (Controlling)' : 'Revenue (Tool)', data.guv.revenue, { klasse: 'border-t-2 border-gray-300 font-medium text-gray-700' })}
-                    {plRow('COGS', data.guv.cogs)}
-                    {plRow('Gross Margin', data.guv.grossMargin)}
-                    <tr className="border-t border-gray-100 text-gray-400">
-                      <td className="sticky left-0 z-10 bg-white p-1">Bruttomarge %</td>
-                      {istMonate.map((p) => (
-                        <td key={p} className="border-l border-gray-200 p-1 text-right">{pctFmt(data.guv.gmPct.istMonate[p] ?? null)}</td>
-                      ))}
-                      <td className="border-l border-gray-300 p-1 text-right">{pctFmt(data.guv.gmPct.sumActual)}</td>
-                      {fcMonate.map((p) => (
-                        <td key={p} className="border-l border-gray-200 p-1 text-right">{pctFmt(data.guv.gmPct.forecastMonate[p] ?? null)}</td>
-                      ))}
-                      <td className="border-l border-gray-300 p-1 text-right">{pctFmt(data.guv.gmPct.sumForecast)}</td>
-                      <td className="border-l border-gray-300 p-1 text-right">{pctFmt(data.guv.gmPct.bud)}</td>
-                      <td className="p-1" />
-                      <td className="p-1 text-right">{pctFmt(data.guv.gmPct.actFc)}</td>
-                      <td className="p-1" />
-                      <td className="p-1" />
-                    </tr>
-                    {plRow('Other Costs', data.guv.otherCosts)}
-                    {plRow('Operating Result (EBIT)', data.guv.ebit, { klasse: 'border-t-2 border-gray-400 bg-gray-50 font-bold text-ez-primary', stickyBg: 'bg-gray-50' })}
-                  </>
-                ) : (
-                  <tr className="border-t-2 border-gray-300">
-                    <td colSpan={istMonate.length + fcMonate.length + 8} className="p-2 text-xs text-gray-500">
-                      Für die EBIT-Sicht bitte die Controlling-P&amp;L-Excel importieren (Import → „P&amp;L-Kosten").
-                    </td>
-                  </tr>
-                )}
               </tbody>
             </table>
           </div>
           <p className="text-xs text-gray-400">Werte in kEUR · Stichtag {data.stichtag}</p>
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-            <span>Forecast-COGS = Umsatz × (1 − Ziel-Bruttomarge); Forecast-Other-Costs = Budget; Ist-Kosten aus Controlling-P&amp;L-Excel.</span>
-            <span className="flex items-center gap-1 sm:ml-auto">
-              Ziel-Bruttomarge {jahr}: <b>{data.guv.zielMargeProzent.toLocaleString('de-DE')} %</b>
-              <span className="text-gray-400">({data.guv.zielMargeQuelle === 'EINSTELLUNG' ? 'gesetzt' : data.guv.zielMargeQuelle === 'IST_YTD_DEFAULT' ? 'aus Ist-YTD' : 'Standard'})</span>
-              {darfMarge && (
-                <>
-                  <input type="number" min={0} max={100} step={0.5} value={margeInput} onChange={(e) => setMargeInput(e.target.value)} placeholder="%" className="ml-2 w-16 rounded border border-gray-300 px-1 py-0.5" />
-                  <button className="text-ez-primary hover:underline disabled:opacity-50" disabled={margeMut.isPending || margeInput === '' || Number.isNaN(Number(margeInput))} onClick={() => margeMut.mutate(Number(margeInput))}>
-                    speichern
-                  </button>
-                </>
-              )}
-            </span>
-          </div>
           <QuellHinweis arten={['ist', 'budget']} />
         </Card>
       )}

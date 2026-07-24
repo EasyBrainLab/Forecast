@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { EINSTELLUNG_KEYS, ebitZielmargeKey, formatPeriode, type MonatswerteRest } from '@forecast/shared';
+import { EINSTELLUNG_KEYS, formatPeriode, type MonatswerteRest } from '@forecast/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ScopeService } from '../scope/scope.service';
@@ -400,9 +400,7 @@ export class DashboardService {
       budgetMonate: budMap.get(e.id) ?? {},
     }));
 
-    const guv = await this.guvBlock(jahr, istGrenze, zeilen, monate);
-
-    // Detailliertes GuV-Panel (Controlling-Snapshot, YTD IST/PY/BUD) — additiv unter der Monatssicht.
+    // Detailliertes GuV-Panel (Controlling-Snapshot, YTD IST/PY/BUD) — Single Source of Truth für die P&L/EBIT-Sicht.
     const guvRows = await this.prisma.guvPosition.findMany({ where: { jahr }, orderBy: { sortierung: 'asc' } });
     const guvPanel = guvRows.length
       ? {
@@ -417,163 +415,7 @@ export class DashboardService {
       monate,
       restAbMonat: istGrenze, // Monate mit Nummer >= restAbMonat sind Forecast, < sind Ist
       zeilen,
-      guv,
       guvPanel,
-    };
-  }
-
-  /**
-   * BU-Gesamt-P&L je Monat: Revenue (aus den E1-Zeilen) → COGS → Gross Margin → Other Costs → EBIT.
-   * Ist-Monate: COGS/Other Costs aus PlKosten (Controlling-Import). Forecast-Monate: COGS = −Umsatz×(1−Ziel-Marge),
-   * Other Costs = Budget. Alles voller EUR (Anzeige/Export rechnen /1000).
-   */
-  private async guvBlock(
-    jahr: number,
-    istGrenze: number,
-    zeilen: { istMonate: Record<string, number>; forecastMonate: Record<string, number>; budgetMonate: Record<string, number> }[],
-    monate: string[],
-  ) {
-    const [plRows, margeSetting] = await Promise.all([
-      this.prisma.plKosten.findMany({ where: { jahr }, select: { monat: true, art: true, kennzahlTyp: true, eur: true } }),
-      this.prisma.einstellung.findUnique({ where: { key: ebitZielmargeKey(jahr) } }),
-    ]);
-    const vorhanden = plRows.length > 0;
-    const cogsA: Record<string, number> = {};
-    const cogsB: Record<string, number> = {};
-    const otherA: Record<string, number> = {};
-    const otherB: Record<string, number> = {};
-    const revA: Record<string, number> = {}; // Controlling-Umsatz Ist (importiert)
-    const revB: Record<string, number> = {}; // Controlling-Umsatz Budget (importiert)
-    for (const r of plRows) {
-      const p = formatPeriode(jahr, r.monat);
-      const val = Number(r.eur);
-      if (r.kennzahlTyp === 'COGS') (r.art === 'ACTUAL' ? cogsA : cogsB)[p] = val;
-      else if (r.kennzahlTyp === 'OTHER_COSTS') (r.art === 'ACTUAL' ? otherA : otherB)[p] = val;
-      else if (r.kennzahlTyp === 'REVENUE') (r.art === 'ACTUAL' ? revA : revB)[p] = val;
-    }
-    const revImportiert = Object.keys(revA).length > 0;
-
-    // Umsatz je Monat für die P&L: Ist = Controlling-Umsatz (importiert) — passt zu den Controlling-Kosten;
-    // fällt auf den Tool-Umsatz zurück, wenn kein Revenue importiert wurde. Forecast immer aus dem Tool.
-    const revenueLine: { istMonate: Record<string, number>; forecastMonate: Record<string, number>; budgetMonate: Record<string, number> } = { istMonate: {}, forecastMonate: {}, budgetMonate: {} };
-    const rev: Record<string, number> = {};
-    const revBud: Record<string, number> = {};
-    for (const p of monate) {
-      const istM = Number(p.slice(5, 7)) < istGrenze;
-      let toolIst = 0;
-      let toolFc = 0;
-      let toolBud = 0;
-      for (const z of zeilen) {
-        toolIst += z.istMonate[p] ?? 0;
-        toolFc += z.forecastMonate[p] ?? 0;
-        toolBud += z.budgetMonate[p] ?? 0;
-      }
-      const revIstM = revImportiert ? (revA[p] ?? 0) : toolIst;
-      const revBudM = revImportiert ? (revB[p] ?? 0) : toolBud;
-      rev[p] = istM ? revIstM : toolFc; // Forecast-Monate: Tool-Forecast
-      revBud[p] = revBudM;
-      if (istM) revenueLine.istMonate[p] = round2(revIstM);
-      else revenueLine.forecastMonate[p] = round2(toolFc);
-      revenueLine.budgetMonate[p] = round2(revBudM);
-    }
-
-    // Ziel-Marge: Einstellung, sonst Default aus Ist-YTD-Marge, sonst 50.
-    let marge: number;
-    let quelle: 'EINSTELLUNG' | 'IST_YTD_DEFAULT' | 'FALLBACK';
-    if (margeSetting && Number.isFinite(Number(margeSetting.value))) {
-      marge = Number(margeSetting.value);
-      quelle = 'EINSTELLUNG';
-    } else {
-      let revYtd = 0;
-      let cogsYtd = 0;
-      for (const p of monate) {
-        if (Number(p.slice(5, 7)) < istGrenze) {
-          revYtd += rev[p];
-          cogsYtd += cogsA[p] ?? 0;
-        }
-      }
-      if (revYtd > 0 && Object.keys(cogsA).length > 0) {
-        marge = ((revYtd + cogsYtd) / revYtd) * 100; // COGS negativ
-        quelle = 'IST_YTD_DEFAULT';
-      } else {
-        marge = 50;
-        quelle = 'FALLBACK';
-      }
-    }
-
-    // P&L-Zeilen im selben Format wie die Umsatzzeilen (istMonate/forecastMonate/budgetMonate),
-    // damit das Frontend dieselbe metrik()-Spaltenlogik wiederverwendet.
-    type Line = { istMonate: Record<string, number>; forecastMonate: Record<string, number>; budgetMonate: Record<string, number> };
-    const mk = (): Line => ({ istMonate: {}, forecastMonate: {}, budgetMonate: {} });
-    const cogs = mk();
-    const grossMargin = mk();
-    const otherCosts = mk();
-    const ebit = mk();
-    const gmPctIst: Record<string, number | null> = {};
-    const gmPctFc: Record<string, number | null> = {};
-    let revActYtd = 0;
-    let gmActYtd = 0;
-    let revFcRest = 0;
-    let gmFcRest = 0;
-    let revBudFy = 0;
-    let gmBudFy = 0;
-
-    for (const p of monate) {
-      const istM = Number(p.slice(5, 7)) < istGrenze;
-      const revBudM = revBud[p];
-      const cogsBudM = cogsB[p] ?? 0;
-      const otherBudM = otherB[p] ?? 0;
-      cogs.budgetMonate[p] = round2(cogsBudM);
-      otherCosts.budgetMonate[p] = round2(otherBudM);
-      grossMargin.budgetMonate[p] = round2(revBudM + cogsBudM);
-      ebit.budgetMonate[p] = round2(revBudM + cogsBudM + otherBudM);
-      revBudFy += revBudM;
-      gmBudFy += revBudM + cogsBudM;
-
-      if (istM) {
-        const revM = rev[p];
-        const cogsM = cogsA[p] ?? 0;
-        const otherM = otherA[p] ?? 0;
-        cogs.istMonate[p] = round2(cogsM);
-        otherCosts.istMonate[p] = round2(otherM);
-        grossMargin.istMonate[p] = round2(revM + cogsM);
-        ebit.istMonate[p] = round2(revM + cogsM + otherM);
-        gmPctIst[p] = revM > 0 ? round2(((revM + cogsM) / revM) * 100) : null;
-        revActYtd += revM;
-        gmActYtd += revM + cogsM;
-      } else {
-        const revM = rev[p];
-        const cogsM = -(revM * (1 - marge / 100));
-        const otherM = otherB[p] ?? 0;
-        cogs.forecastMonate[p] = round2(cogsM);
-        otherCosts.forecastMonate[p] = round2(otherM);
-        grossMargin.forecastMonate[p] = round2(revM + cogsM);
-        ebit.forecastMonate[p] = round2(revM + cogsM + otherM);
-        gmPctFc[p] = revM > 0 ? round2(((revM + cogsM) / revM) * 100) : null;
-        revFcRest += revM;
-        gmFcRest += revM + cogsM;
-      }
-    }
-
-    const pct = (g: number, r: number): number | null => (r > 0 ? round2((g / r) * 100) : null);
-    return {
-      vorhanden,
-      revImportiert,
-      zielMargeProzent: round2(marge),
-      zielMargeQuelle: quelle,
-      revenue: revenueLine,
-      cogs,
-      grossMargin,
-      otherCosts,
-      ebit,
-      gmPct: {
-        istMonate: gmPctIst,
-        forecastMonate: gmPctFc,
-        sumActual: pct(gmActYtd, revActYtd),
-        sumForecast: pct(gmFcRest, revFcRest),
-        actFc: pct(gmActYtd + gmFcRest, revActYtd + revFcRest),
-        bud: pct(gmBudFy, revBudFy),
-      },
     };
   }
 
