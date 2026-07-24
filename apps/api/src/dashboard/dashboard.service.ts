@@ -402,6 +402,15 @@ export class DashboardService {
 
     const guv = await this.guvBlock(jahr, istGrenze, zeilen, monate);
 
+    // Detailliertes GuV-Panel (Controlling-Snapshot, YTD IST/PY/BUD) — additiv unter der Monatssicht.
+    const guvRows = await this.prisma.guvPosition.findMany({ where: { jahr }, orderBy: { sortierung: 'asc' } });
+    const guvPanel = guvRows.length
+      ? {
+          stichtagMonat: guvRows[0].stichtagMonat,
+          positionen: guvRows.map((p) => ({ key: p.positionKey, label: p.label, ebene: p.ebene, ist: Number(p.istEur), py: Number(p.pyEur), bud: Number(p.budEur) })),
+        }
+      : null;
+
     return {
       jahr,
       stichtag: formatPeriode(aktJahr, aktMonat),
@@ -409,6 +418,7 @@ export class DashboardService {
       restAbMonat: istGrenze, // Monate mit Nummer >= restAbMonat sind Forecast, < sind Ist
       zeilen,
       guv,
+      guvPanel,
     };
   }
 
