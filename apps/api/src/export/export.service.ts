@@ -363,6 +363,61 @@ export class ExportService {
       }
     }
 
+    // Drittes Blatt: G&V-Planung (Ertragsvorschau) — Umsatz/COGS/Gross Margin/Other Costs/Operating Result + FTE.
+    const gf = k.guvForecast;
+    if (gf) {
+      const istM = gf.monate.filter((m) => m.quelle === 'IST');
+      const fcM = gf.monate.filter((m) => m.quelle === 'FORECAST');
+      const pws = wb.addWorksheet('GuV-Planung');
+      pws.getColumn(1).width = 24;
+      const anzahlSpalten = 1 + istM.length + 1 + fcM.length + 1;
+      for (let c = 2; c <= anzahlSpalten; c++) pws.getColumn(c).width = 10;
+      pws.mergeCells(1, 1, 1, anzahlSpalten);
+      pws.getCell(1, 1).value = `G&V-Planung ${k.jahr} — Ertragsvorschau (kEUR) · Umsatz Tool · Ist-Marge GuV · Forecast geplant`;
+      pws.getCell(1, 1).font = { bold: true, size: 13, color: { argb: `FF${PRIMARY}` } };
+
+      const kopf: string[] = ['Kennzahl'];
+      for (const m of istM) kopf.push(`${MON_KURZ[m.monat - 1]}. ${jj}`);
+      kopf.push('∑ YTD');
+      for (const m of fcM) kopf.push(`${MON_KURZ[m.monat - 1]}. ${jj}`);
+      kopf.push(`FY ${jj}`);
+      const ph = pws.addRow(kopf);
+      ph.eachCell((c, col) => {
+        c.font = { bold: true };
+        c.alignment = { horizontal: col === 1 ? 'left' : 'right' };
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${KOPF_BG}` } };
+      });
+
+      const istYtd = gf.istYtd;
+      // Eine Kennzahlen-Zeile: Werte je Ist-Monat | YTD | je FC-Monat | FY. fmt: 'eur' | 'pct' | 'fte'.
+      const zeile = (label: string, ist: (m: (typeof gf.monate)[number]) => number | null, ytd: number | null, fc: (m: (typeof gf.monate)[number]) => number | null, fyv: number | null, fmt: 'eur' | 'pct' | 'fte', bold?: boolean) => {
+        const werte: (number | null)[] = [];
+        for (const m of istM) werte.push(ist(m));
+        werte.push(ytd);
+        for (const m of fcM) werte.push(fc(m));
+        werte.push(fyv);
+        const row = pws.addRow([label, ...werte.map((v) => (v == null ? null : fmt === 'eur' ? kEurWert(v) : v))]);
+        row.getCell(1).font = { bold: !!bold };
+        row.eachCell((c, col) => {
+          if (col === 1) return;
+          c.alignment = { horizontal: 'right' };
+          c.numFmt = fmt === 'pct' ? '0.0"%"' : fmt === 'fte' ? '0.0' : '#,##0;-#,##0';
+          if (bold) c.font = { ...(c.font ?? {}), bold: true };
+        });
+        if (bold) row.getCell(1).border = { top: { style: 'medium' } };
+        return row;
+      };
+
+      zeile('Umsatz', (m) => m.revenueEur, istYtd?.revenueEur ?? null, (m) => m.revenueEur, gf.fy.revenueEur, 'eur', true);
+      zeile('COGS', (m) => m.cogsEur, istYtd?.grossMarginEur != null ? istYtd.grossMarginEur - istYtd.revenueEur : null, (m) => m.cogsEur, gf.fy.cogsEur, 'eur');
+      zeile('Gross Margin', (m) => m.grossMarginEur, istYtd?.grossMarginEur ?? null, (m) => m.grossMarginEur, gf.fy.grossMarginEur, 'eur');
+      zeile('Gross Margin %', (m) => m.grossMarginPct, istYtd?.grossMarginPct ?? null, (m) => m.grossMarginPct, gf.fy.grossMarginPct, 'pct');
+      zeile('Sonstige Kosten', (m) => m.otherCostsEur, istYtd?.otherCostsEur ?? null, (m) => m.otherCostsEur, gf.fy.otherCostsEur, 'eur');
+      zeile('Operating Result', (m) => m.operatingResultEur, istYtd?.operatingResultEur ?? null, (m) => m.operatingResultEur, gf.fy.operatingResultEur, 'eur', true);
+      zeile('FTE', (m) => m.fte, gf.fy.fte, (m) => m.fte, gf.fy.fte, 'fte');
+      zeile('Revenue / FTE (annual.)', (m) => m.revenueProFteEur, gf.fy.revenueProFteEur, (m) => m.revenueProFteEur, gf.fy.revenueProFteEur, 'eur');
+    }
+
     const arr = await wb.xlsx.writeBuffer();
     return Buffer.from(arr);
   }

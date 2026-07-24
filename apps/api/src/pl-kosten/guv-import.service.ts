@@ -63,7 +63,9 @@ export class GuvImportService {
       importBatchId: batch.id,
     }));
 
-    await this.prisma.$transaction([this.prisma.guvPosition.deleteMany({ where: { jahr } }), this.prisma.guvPosition.createMany({ data: rows })]);
+    // Voll-Ersatz nur des jeweiligen Monatsstands — ältere Monats-Snapshots bleiben erhalten
+    // (Basis für die Monatsscheiben-Differenz in der Monatssicht).
+    await this.prisma.$transaction([this.prisma.guvPosition.deleteMany({ where: { jahr, stichtagMonat } }), this.prisma.guvPosition.createMany({ data: rows })]);
 
     const val = (key: string, feld: 'ist' | 'py' | 'bud'): number => k1(parsed.positionen.find((p) => p.key === key)?.[feld] ?? 0);
     const bericht: GuvBericht = {
